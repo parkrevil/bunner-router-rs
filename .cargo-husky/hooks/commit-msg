@@ -1,0 +1,16 @@
+#!/usr/bin/env sh
+set -eu
+
+if command -v commitlint >/dev/null 2>&1; then
+	commitlint_cmd="commitlint"
+elif command -v commitlint-rs >/dev/null 2>&1; then
+	commitlint_cmd="commitlint-rs"
+else
+	echo "commitlint binary not found. Install with 'cargo install commitlint-rs'." >&2
+	exit 1
+fi
+
+repo_root="$(git rev-parse --show-toplevel)"
+config_path="$repo_root/.commitlintrc.json"
+
+"$commitlint_cmd" --config "$config_path" --edit "$1"

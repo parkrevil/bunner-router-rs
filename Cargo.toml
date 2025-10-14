@@ -1,0 +1,20 @@
+[package]
+name = "bunner_router_rs"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "A lightweight HTTP Router library for Rust"
+repository = "https://github.com/parkrevil/bunner-router-rs"
+documentation = "https://github.com/parkrevil/bunner-router-rs"
+homepage = "https://github.com/parkrevil/bunner-router-rs"
+keywords = ["route", "router", "http", "web", "security", "middleware"]
+categories = ["web-programming", "network-programming"]
+authors = ["parkrevil"]
+readme = "README.md"
+
+[dependencies]
+
+[dev-dependencies.cargo-husky]
+version = "1"
+default-features = false
+features = ["user-hooks"]
