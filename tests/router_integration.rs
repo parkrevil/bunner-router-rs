@@ -190,10 +190,7 @@ fn router_cannot_add_after_seal() {
     let add_err = router.add(1, HttpMethod::Get, "/once-more");
     assert_error_code(add_err, RouterErrorCode::AlreadySealed);
 
-    let bulk_err = router.add_bulk(
-        1,
-        vec![(HttpMethod::Get, "/bulk-once".to_string())],
-    );
+    let bulk_err = router.add_bulk(1, vec![(HttpMethod::Get, "/bulk-once".to_string())]);
     assert_error_code(bulk_err, RouterErrorCode::AlreadySealed);
 }
 
@@ -244,7 +241,10 @@ fn router_reports_path_not_found() {
 #[test]
 fn router_validates_empty_and_invalid_paths() {
     let router = Router::new(None);
-    assert_error_code(router.add(1, HttpMethod::Get, ""), RouterErrorCode::EmptyPath);
+    assert_error_code(
+        router.add(1, HttpMethod::Get, ""),
+        RouterErrorCode::EmptyPath,
+    );
     assert_error_code(
         router.add(1, HttpMethod::Get, " /space"),
         RouterErrorCode::InvalidPath,
