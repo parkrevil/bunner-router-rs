@@ -25,7 +25,7 @@ format-check:
 .PHONY: test
 
 test:
-	INSTA_UPDATE=always RUSTFLAGS="-A dead_code" cargo nextest run --package $(PACKAGE); \
+	INSTA_UPDATE=always RUSTFLAGS="-A dead_code" cargo nextest run --package $(PACKAGE) --no-tests=pass; \
 
 ## Benchmarking
 .PHONY: bench
