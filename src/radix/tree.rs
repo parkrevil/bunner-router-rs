@@ -141,7 +141,7 @@ impl RadixTree {
             }
             drop(tx);
 
-        let mut first_err: Option<RadixError> = None;
+            let mut first_err: Option<RadixError> = None;
             for msg in rx.iter() {
                 match msg {
                     Ok((idx, method, segs, head, plen, is_static, lits)) => {

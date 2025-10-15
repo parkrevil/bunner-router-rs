@@ -1,9 +1,9 @@
-use crate::router::{RouterError, RouterResult};
 use crate::matcher::{find_route, with_param_buffer};
 use crate::path::normalize_and_validate_path;
 use crate::pattern::SegmentPattern;
-use crate::radix::{RadixError, HTTP_METHOD_COUNT, RadixTree};
+use crate::radix::{HTTP_METHOD_COUNT, RadixError, RadixTree};
 use crate::router::Router;
+use crate::router::{RouterError, RouterResult};
 use crate::types::{HttpMethod, RouteMatch};
 use hashbrown::HashMap as FastHashMap;
 

@@ -19,4 +19,3 @@ pub enum RouterError {
 }
 
 pub type RouterResult<T> = Result<T, RouterError>;
-
