@@ -6,8 +6,8 @@ use crate::router::Router;
 use crate::types::{HttpMethod, RouteMatch};
 use hashbrown::HashMap as FastHashMap;
 
-use super::{ReadOnlyError, ReadOnlyResult};
 use super::converter::{copy_static_maps, extract_root};
+use super::{ReadOnlyError, ReadOnlyResult};
 
 #[derive(Debug, Clone, Default)]
 pub struct RouterReadOnly {
