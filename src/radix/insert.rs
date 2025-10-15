@@ -1,8 +1,8 @@
 use super::{
     MAX_ROUTES, RadixTree, RadixTreeNode, create_node_box_from_arena_pointer, node::PatternMeta,
 };
-use crate::errors::{RouterError, RouterErrorCode, RouterResult};
-use crate::path::normalize_and_validate_path;
+use crate::errors::{RouterError, RouterResult};
+use crate::path::{PathError, normalize_and_validate_path};
 use crate::pattern::{
     SegmentPart, SegmentPattern, parse_segment, pattern_compatible_policy, pattern_is_pure_static,
     pattern_score,
@@ -10,8 +10,8 @@ use crate::pattern::{
 use crate::tools::Interner;
 use crate::types::{HttpMethod, WorkerId};
 use hashbrown::HashSet;
-use serde_json::json;
 use std::sync::atomic::AtomicU16;
+use crate::radix::RadixError;
 
 impl RadixTree {
     pub fn insert(
@@ -22,14 +22,10 @@ impl RadixTree {
     ) -> RouterResult<u16> {
         tracing::event!(tracing::Level::TRACE, operation="insert", method=?method, path=%path);
         if self.root_node.is_sealed() {
-            return Err(Box::new(RouterError::new(
-                RouterErrorCode::AlreadySealed,
-                "router",
-                "route_registration",
-                "validation",
-                format!("Router is sealed; cannot insert path '{}'", path),
-                Some(json!({"path": path, "operation": "insert"})),
-            )));
+            return Err(RouterError::from(RadixError::TreeSealed {
+                operation: "insert",
+                path: Some(path.to_string()),
+            }));
         }
         self.root_node.set_dirty(true);
 
@@ -56,14 +52,10 @@ impl RadixTree {
     ) -> RouterResult<u16> {
         tracing::event!(tracing::Level::TRACE, operation="insert_parsed", method=?method, segments=parsed_segments.len() as u64);
         if self.root_node.is_sealed() {
-            return Err(Box::new(RouterError::new(
-                RouterErrorCode::AlreadySealed,
-                "router",
-                "route_registration",
-                "validation",
-                "Router is sealed; cannot insert parsed segments".to_string(),
-                Some(json!({"operation": "insert_parsed", "sealed": true})),
-            )));
+            return Err(RouterError::from(RadixError::TreeSealed {
+                operation: "insert_parsed",
+                path: None,
+            }));
         }
         self.root_node.set_dirty(true);
 
@@ -138,19 +130,10 @@ impl RadixTree {
     ) -> RouterResult<u16> {
         tracing::event!(tracing::Level::TRACE, operation="insert_parsed_preassigned", method=?method, segments=parsed_segments.len() as u64, assigned_key=assigned_key as u64);
         if self.root_node.is_sealed() {
-            return Err(Box::new(RouterError::new(
-                RouterErrorCode::AlreadySealed,
-                "router",
-                "route_registration",
-                "validation",
-                format!(
-                    "Router is sealed; cannot insert parsed segments preassigned key={}",
-                    assigned_key
-                ),
-                Some(
-                    json!({"operation":"insert_parsed_preassigned","assigned_key": assigned_key, "sealed": true}),
-                ),
-            )));
+            return Err(RouterError::from(RadixError::TreeSealed {
+                operation: "insert_parsed_preassigned",
+                path: None,
+            }));
         }
         self.root_node.set_dirty(true);
 
@@ -256,16 +239,9 @@ fn find_or_create_pattern_child<'a>(
 ) -> RouterResult<&'a mut RadixTreeNode> {
     for exist in node.patterns.iter() {
         if !pattern_compatible_policy(exist, pat) {
-            return Err(Box::new(RouterError::new(
-                RouterErrorCode::ParamNameConflicted,
-                "router",
-                "route_registration",
-                "validation",
-                "Parameter name conflict at same position between patterns".to_string(),
-                Some(
-                    json!({"conflict": "pattern_compatibility", "new_pattern": format!("{:?}", pat)}),
-                ),
-            )));
+            return Err(RouterError::from(RadixError::ParamNameConflict {
+                pattern: format!("{:?}", pat),
+            }));
         }
     }
 
@@ -297,32 +273,19 @@ fn handle_wildcard_insert(
     worker_id: WorkerId,
 ) -> RouterResult<u16> {
     if index != total_segments - 1 {
-        return Err(Box::new(RouterError::new(
-            RouterErrorCode::InvalidWildcard,
-            "router",
-            "route_registration",
-            "validation",
-            format!(
-                "Wildcard segment '*' must be the final segment; found at index {} of {}",
-                index, total_segments
-            ),
-            Some(
-                json!({"index": index, "total_segments": total_segments, "operation": "wildcard_insert"}),
-            ),
-        )));
+        return Err(RouterError::from(RadixError::WildcardMustBeTerminal {
+            segment_index: index,
+            total_segments,
+        }));
     }
     let method_idx = method as usize;
     if node.wildcard_routes[method_idx] != 0 {
         let existing_key = node.wildcard_routes[method_idx] - 1;
         if side_table.get(existing_key as usize).and_then(|v| *v) == Some(worker_id) {
-            return Err(Box::new(RouterError::new(
-                RouterErrorCode::DuplicatedPath,
-                "router",
-                "route_registration",
-                "validation",
-                "This worker already registered this wildcard route".to_string(),
-                Some(json!({"worker_id": worker_id, "existing_key": existing_key})),
-            )));
+            return Err(RouterError::from(RadixError::DuplicateWildcardRoute {
+                worker_id,
+                existing_key,
+            }));
         }
         return Ok(existing_key);
     }
@@ -330,7 +293,6 @@ fn handle_wildcard_insert(
     node.wildcard_routes[method_idx] = key + 1;
     record_route_worker_raw(side_table, key, worker_id);
 
-    // method mask is delayed to finalize()
     node.set_dirty(true);
 
     Ok(key)
@@ -346,32 +308,19 @@ fn handle_wildcard_insert_preassigned(
     worker_id: WorkerId,
 ) -> RouterResult<u16> {
     if index != total_segments - 1 {
-        return Err(Box::new(RouterError::new(
-            RouterErrorCode::InvalidWildcard,
-            "router",
-            "route_registration",
-            "validation",
-            format!(
-                "Wildcard segment '*' must be the final segment; found at index {} of {}",
-                index, total_segments
-            ),
-            Some(
-                json!({"index": index, "total_segments": total_segments, "operation": "wildcard_insert_preassigned", "assigned_key": assigned_key}),
-            ),
-        )));
+        return Err(RouterError::from(RadixError::WildcardMustBeTerminal {
+            segment_index: index,
+            total_segments,
+        }));
     }
     let method_idx = method as usize;
     if node.wildcard_routes[method_idx] != 0 {
         let existing_key = node.wildcard_routes[method_idx] - 1;
         if side_table.get(existing_key as usize).and_then(|v| *v) == Some(worker_id) {
-            return Err(Box::new(RouterError::new(
-                RouterErrorCode::DuplicatedPath,
-                "router",
-                "route_registration",
-                "validation",
-                "This worker already registered this wildcard route (preassigned)".to_string(),
-                Some(json!({"worker_id": worker_id, "existing_key": existing_key})),
-            )));
+            return Err(RouterError::from(RadixError::DuplicateWildcardRoute {
+                worker_id,
+                existing_key,
+            }));
         }
         return Ok(existing_key);
     }
@@ -392,29 +341,20 @@ fn assign_route_key(
     if node.routes[method_idx] != 0 {
         let existing_key = node.routes[method_idx] - 1;
         if side_table.get(existing_key as usize).and_then(|v| *v) == Some(worker_id) {
-            return Err(Box::new(RouterError::new(
-                RouterErrorCode::DuplicatedPath,
-                "router",
-                "route_registration",
-                "validation",
-                "This worker already registered this route".to_string(),
-                Some(json!({"worker_id": worker_id, "existing_key": existing_key})),
-            )));
+            return Err(RouterError::from(RadixError::DuplicateRoute {
+                worker_id,
+                existing_key,
+            }));
         }
         return Ok(existing_key);
     }
     let current_key = next_route_key.load(std::sync::atomic::Ordering::Relaxed);
     if current_key == MAX_ROUTES {
-        return Err(Box::new(RouterError::new(
-            RouterErrorCode::MaxRoutesExceeded,
-            "router",
-            "route_registration",
-            "validation",
-            "Maximum number of routes exceeded".to_string(),
-            Some(
-                json!({"current_key": current_key, "maxRoutes": MAX_ROUTES, "operation": "assign_route_key"}),
-            ),
-        )));
+        return Err(RouterError::from(RadixError::MaxRoutesExceeded {
+            requested: None,
+            current_next_key: current_key,
+            limit: MAX_ROUTES,
+        }));
     }
     let key = next_route_key.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     node.routes[method_idx] = key + 1;
@@ -438,14 +378,10 @@ fn assign_route_key_preassigned(
     if node.routes[method_idx] != 0 {
         let existing_key = node.routes[method_idx] - 1;
         if side_table.get(existing_key as usize).and_then(|v| *v) == Some(worker_id) {
-            return Err(Box::new(RouterError::new(
-                RouterErrorCode::DuplicatedPath,
-                "router",
-                "route_registration",
-                "validation",
-                "This worker already registered this route (preassigned)".to_string(),
-                Some(json!({"worker_id": worker_id, "existing_key": existing_key})),
-            )));
+            return Err(RouterError::from(RadixError::DuplicateRoute {
+                worker_id,
+                existing_key,
+            }));
         }
         return Ok(existing_key);
     }
@@ -484,34 +420,17 @@ impl SegmentPart {
 // Thread-safe standalone parser for bulk preprocess
 pub(super) fn prepare_path_segments_standalone(path: &str) -> RouterResult<Vec<SegmentPattern>> {
     // Use the unified path validation function
-    let norm = match normalize_and_validate_path(path) {
-        Ok(normalized_path) => normalized_path,
-        Err(mut err) => {
-            // Update the error context for route registration
-            err.stage = "route_registration".to_string();
-            err.cause = "validation".to_string();
-            if let Some(ref mut extra) = err.extra
-                && let Some(obj) = extra.as_object_mut()
-            {
-                obj.insert("operation".to_string(), json!("path_parsing"));
-            }
-            return Err(err);
-        }
-    };
+    let norm = normalize_and_validate_path(path)?;
     if norm == "/" {
         return Ok(Vec::new());
     }
 
     let segments: Vec<&str> = norm.split('/').filter(|s| !s.is_empty()).collect();
     if segments.is_empty() {
-        return Err(Box::new(RouterError::new(
-            RouterErrorCode::InvalidPath,
-            "router",
-            "route_registration",
-            "validation",
-            "Route path syntax invalid after normalization".to_string(),
-            Some(json!({"path": path, "normalized": norm, "operation": "path_parsing"})),
-        )));
+        return Err(RouterError::from(PathError::InvalidAfterNormalization {
+            input: path.to_string(),
+            normalized: norm,
+        }));
     }
 
     let mut parsed_segments = Vec::with_capacity(segments.len());
@@ -532,36 +451,23 @@ pub(super) fn prepare_path_segments_standalone(path: &str) -> RouterResult<Vec<S
         }
 
         if !PatternMeta::is_valid_length(min_len, last_lit_len) {
-            return Err(Box::new(RouterError::new(
-                RouterErrorCode::PatternTooLong,
-                "router",
-                "route_registration",
-                "validation",
-                format!(
-                    "Pattern length exceeds allowed limits for segment '{}' in path '{}'",
-                    seg, path
-                ),
-                Some(
-                    json!({"path": path, "segment": seg, "min_len": min_len, "last_lit_len": last_lit_len, "operation": "pattern_validation"}),
-                ),
-            )));
+            return Err(RouterError::from(RadixError::PatternLengthExceeded {
+                segment: seg.to_string(),
+                path: path.to_string(),
+                min_length: min_len,
+                last_literal_length: last_lit_len,
+            }));
         }
 
         for part in &pat.parts {
             if let SegmentPart::Param { name, .. } = part {
-                if seen_params.contains(name.as_str()) {
-                    return Err(Box::new(RouterError::new(
-                        RouterErrorCode::DuplicateParamName,
-                        "router",
-                        "route_registration",
-                        "validation",
-                        format!("Duplicate parameter name '{}' in route '{}'", name, path),
-                        Some(
-                            json!({"param": name, "path": path, "operation": "duplicate_param_check"}),
-                        ),
-                    )));
+                let name_owned = name.clone();
+                if !seen_params.insert(name_owned.clone()) {
+                    return Err(RouterError::from(RadixError::DuplicateParamName {
+                        param: name_owned,
+                        path: path.to_string(),
+                    }));
                 }
-                seen_params.insert(name.clone());
             }
         }
         parsed_segments.push(pat);

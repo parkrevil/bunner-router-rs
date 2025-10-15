@@ -2,7 +2,8 @@ use bumpalo::Bump;
 use hashbrown::HashMap as FastHashMap;
 use hashbrown::HashSet as FastHashSet;
 
-use crate::errors::{RouterError, RouterErrorCode, RouterResult};
+use crate::errors::{RouterError, RouterResult};
+use super::RadixError;
 use crate::pattern::{SegmentPart, SegmentPattern};
 use crate::router::RouterOptions;
 use crate::tools::Interner;
@@ -73,14 +74,10 @@ impl RadixTree {
         I: IntoIterator<Item = (HttpMethod, String)>,
     {
         if self.root_node.is_sealed() {
-            return Err(Box::new(RouterError::new(
-                RouterErrorCode::AlreadySealed,
-                "router",
-                "route_registration",
-                "validation",
-                "Router is sealed; cannot insert bulk routes".to_string(),
-                Some(serde_json::json!({"operation": "insert_bulk", "sealed": true})),
-            )));
+            return Err(RouterError::from(RadixError::TreeSealed {
+                operation: "insert_bulk",
+                path: None,
+            }));
         }
 
         // Phase A: parallel preprocess (normalize/parse) with light metadata
@@ -145,7 +142,7 @@ impl RadixTree {
             }
             drop(tx);
 
-            let mut first_err: Option<Box<RouterError>> = None;
+            let mut first_err: Option<RouterError> = None;
             for msg in rx.iter() {
                 match msg {
                     Ok((idx, method, segs, head, plen, is_static, lits)) => {
@@ -209,19 +206,11 @@ impl RadixTree {
             use std::sync::atomic::Ordering;
             let cur = self.next_route_key.load(Ordering::Relaxed);
             if cur as usize + n >= MAX_ROUTES as usize {
-                return Err(Box::new(RouterError::new(
-                    RouterErrorCode::MaxRoutesExceeded,
-                    "router",
-                    "route_registration",
-                    "validation",
-                    "Maximum number of routes exceeded when reserving bulk keys".to_string(),
-                    Some(serde_json::json!({
-                        "requested": n,
-                        "currentNextKey": cur,
-                        "maxRoutes": MAX_ROUTES,
-                        "operation": "bulk_key_reservation"
-                    })),
-                )));
+                return Err(RouterError::from(RadixError::MaxRoutesExceeded {
+                    requested: Some(n),
+                    current_next_key: cur,
+                    limit: MAX_ROUTES,
+                }));
             }
             self.next_route_key.fetch_add(n as u16, Ordering::Relaxed)
         };

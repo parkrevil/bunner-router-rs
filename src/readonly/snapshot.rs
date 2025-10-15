@@ -1,12 +1,12 @@
-use crate::errors::{RouterError, RouterErrorCode, RouterResult};
+use crate::errors::{RouterError, RouterResult};
 use crate::matcher::{find_route, with_param_buffer};
 use crate::path::normalize_and_validate_path;
 use crate::pattern::SegmentPattern;
 use crate::radix::{HTTP_METHOD_COUNT, RadixTree};
+use crate::readonly::ReadOnlyError;
 use crate::router::Router;
 use crate::types::{HttpMethod, RouteMatch};
 use hashbrown::HashMap as FastHashMap;
-use serde_json::json;
 
 use super::converter::{copy_static_maps, extract_root};
 
@@ -43,21 +43,7 @@ impl RouterReadOnly {
     pub fn find(&self, method: HttpMethod, path: &str) -> RouterResult<RouteMatch> {
         tracing::event!(tracing::Level::TRACE, operation="find", method=?method, path=%path);
 
-        let normalized = match normalize_and_validate_path(path) {
-            Ok(p) => p,
-            Err(err_box) => {
-                let mut err = *err_box;
-                err.stage = "route_matching".to_string();
-                err.cause = "routing".to_string();
-                if let Some(ref mut extra) = err.extra
-                    && let Some(obj) = extra.as_object_mut()
-                {
-                    obj.insert("method".to_string(), serde_json::json!(method as u8));
-                    obj.insert("operation".to_string(), serde_json::json!("route_matching"));
-                }
-                return Err(Box::new(err));
-            }
-        };
+        let normalized = normalize_and_validate_path(path)?;
 
         if let Some(route_key) = self.find_static_normalized(method, &normalized) {
             return Ok((route_key, Vec::new()));
@@ -68,18 +54,10 @@ impl RouterReadOnly {
         if let Some((route_key, params)) = found {
             Ok((route_key, params))
         } else {
-            Err(Box::new(RouterError::new(
-                RouterErrorCode::PathNotFound,
-                "router",
-                "route_matching",
-                "routing",
-                "No route matched for given method and path".to_string(),
-                Some(json!({
-                    "path": normalized,
-                    "method": method as u8,
-                    "operation": "route_lookup"
-                })),
-            )))
+            Err(RouterError::from(ReadOnlyError::RouteNotFound {
+                method,
+                path: normalized,
+            }))
         }
     }
 }

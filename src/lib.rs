@@ -9,6 +9,6 @@ pub mod router;
 pub mod tools;
 pub mod types;
 
-pub use errors::{RouterError, RouterErrorCode, RouterResult};
+pub use errors::{RouterError, RouterResult};
 pub use router::{Router, RouterOptions, RouterReadOnly};
 pub use types::{HttpMethod, RouteMatch, WorkerId};

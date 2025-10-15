@@ -1,15 +1,69 @@
 use bunner_router_rs::{
-    HttpMethod, Router, RouterError, RouterErrorCode, RouterOptions, RouterResult,
+    path::PathError,
+    pattern::PatternError,
+    radix::RadixError,
+    readonly::ReadOnlyError,
+    HttpMethod, Router, RouterError, RouterOptions, RouterResult,
 };
 use std::sync::Arc;
 
-fn assert_error_code<T>(result: RouterResult<T>, expected: RouterErrorCode) -> RouterError {
-    match result {
-        Ok(_) => panic!("expected error {:?} but got Ok", expected),
-        Err(err) => {
-            assert_eq!(err.code, expected, "unexpected error code: {err:?}");
-            *err
-        }
+fn expect_error<T: std::fmt::Debug>(result: RouterResult<T>) -> RouterError {
+    result.expect_err("expected error")
+}
+
+fn expect_path_error<T: std::fmt::Debug>(result: RouterResult<T>) -> PathError {
+    match expect_error(result) {
+        RouterError::Path(err) => err,
+        other => panic!("expected path error, got {other:?}"),
+    }
+}
+
+fn expect_pattern_error<T: std::fmt::Debug>(result: RouterResult<T>) -> PatternError {
+    match expect_error(result) {
+        RouterError::Pattern(err) => err,
+        other => panic!("expected pattern error, got {other:?}"),
+    }
+}
+
+fn expect_radix_error<T: std::fmt::Debug>(result: RouterResult<T>) -> RadixError {
+    match expect_error(result) {
+        RouterError::Radix(err) => err,
+        other => panic!("expected radix error, got {other:?}"),
+    }
+}
+
+fn expect_readonly_error<T: std::fmt::Debug>(result: RouterResult<T>) -> ReadOnlyError {
+    match expect_error(result) {
+        RouterError::ReadOnly(err) => err,
+        other => panic!("expected readonly error, got {other:?}"),
+    }
+}
+
+fn expect_add_sealed_error<T: std::fmt::Debug>(result: RouterResult<T>) -> String {
+    match expect_error(result) {
+        RouterError::AddWhileSealed { path } => path,
+        other => panic!("expected add-while-sealed error, got {other:?}"),
+    }
+}
+
+fn expect_bulk_add_sealed_error<T: std::fmt::Debug>(result: RouterResult<T>) -> usize {
+    match expect_error(result) {
+        RouterError::BulkAddWhileSealed { count } => count,
+        other => panic!("expected bulk-add-while-sealed error, got {other:?}"),
+    }
+}
+
+fn expect_find_mutable_error<T: std::fmt::Debug>(result: RouterResult<T>) {
+    match expect_error(result) {
+        RouterError::FindWhileMutable => {}
+        other => panic!("expected find-while-mutable error, got {other:?}"),
+    }
+}
+
+fn expect_readonly_unavailable_error<T: std::fmt::Debug>(result: RouterResult<T>) {
+    match expect_error(result) {
+        RouterError::ReadOnlyUnavailable => {}
+        other => panic!("expected readonly-unavailable error, got {other:?}"),
     }
 }
 
@@ -150,8 +204,10 @@ fn router_add_bulk_propagates_invalid_path_error() {
         ],
     );
 
-    let err = assert_error_code(err, RouterErrorCode::InvalidPath);
-    assert_eq!(err.stage, "route_registration");
+    match expect_path_error(err) {
+        PathError::ControlOrWhitespace { byte, .. } => assert_eq!(byte, b'\t'),
+        other => panic!("unexpected path error: {other:?}"),
+    }
 }
 
 #[test]
@@ -162,7 +218,10 @@ fn router_rejects_duplicate_route_for_same_worker() {
         .expect("first registration should succeed");
 
     let err = router.add(42, HttpMethod::Get, "/dup");
-    assert_error_code(err, RouterErrorCode::DuplicatedPath);
+    match expect_radix_error(err) {
+        RadixError::DuplicateRoute { worker_id, .. } => assert_eq!(worker_id, 42),
+        other => panic!("unexpected radix error: {other:?}"),
+    }
 }
 
 #[test]
@@ -187,10 +246,10 @@ fn router_cannot_add_after_seal() {
     router.seal();
 
     let add_err = router.add(1, HttpMethod::Get, "/once-more");
-    assert_error_code(add_err, RouterErrorCode::AlreadySealed);
+    assert_eq!(expect_add_sealed_error(add_err), "/once-more".to_string());
 
     let bulk_err = router.add_bulk(1, vec![(HttpMethod::Get, "/bulk-once".to_string())]);
-    assert_error_code(bulk_err, RouterErrorCode::AlreadySealed);
+    assert_eq!(expect_bulk_add_sealed_error(bulk_err), 1);
 }
 
 #[test]
@@ -201,7 +260,7 @@ fn router_find_before_seal_fails() {
         .expect("initial add should succeed");
 
     let err = router.find(HttpMethod::Get, "/pending");
-    assert_error_code(err, RouterErrorCode::NotSealed);
+    expect_find_mutable_error(err);
 }
 
 #[test]
@@ -212,7 +271,7 @@ fn router_get_readonly_requires_seal() {
         .expect("should register");
 
     let err = router.get_readonly();
-    assert_error_code(err, RouterErrorCode::NotSealed);
+    expect_readonly_unavailable_error(err);
 
     router.seal();
 
@@ -234,48 +293,59 @@ fn router_reports_path_not_found() {
     router.seal();
 
     let err = router.find(HttpMethod::Get, "/missing");
-    assert_error_code(err, RouterErrorCode::PathNotFound);
+    match expect_readonly_error(err) {
+        ReadOnlyError::RouteNotFound { method, path } => {
+            assert_eq!(method, HttpMethod::Get);
+            assert_eq!(path, "/missing");
+        }
+    }
 }
 
 #[test]
 fn router_validates_empty_and_invalid_paths() {
     let router = Router::new(None);
-    assert_error_code(
-        router.add(1, HttpMethod::Get, ""),
-        RouterErrorCode::EmptyPath,
-    );
-    assert_error_code(
-        router.add(1, HttpMethod::Get, " /space"),
-        RouterErrorCode::InvalidPath,
-    );
-    assert_error_code(
-        router.add(1, HttpMethod::Get, "/../escape"),
-        RouterErrorCode::InvalidPath,
-    );
-    assert_error_code(
-        router.add(1, HttpMethod::Get, "/nonascii/å"),
-        RouterErrorCode::InvalidPath,
-    );
+    assert!(matches!(
+        expect_path_error(router.add(1, HttpMethod::Get, "")),
+        PathError::Empty
+    ));
+
+    match expect_path_error(router.add(1, HttpMethod::Get, " /space")) {
+        PathError::ControlOrWhitespace { byte, .. } => assert_eq!(byte, b' '),
+        other => panic!("unexpected path error: {other:?}"),
+    }
+
+    assert!(matches!(
+        expect_path_error(router.add(1, HttpMethod::Get, "/../escape")),
+        PathError::InvalidParentTraversal { .. }
+    ));
+
+    assert!(matches!(
+        expect_path_error(router.add(1, HttpMethod::Get, "/nonascii/å")),
+        PathError::NonAscii { .. }
+    ));
 }
 
 #[test]
 fn router_rejects_invalid_param_names() {
     let router = Router::new(None);
-    assert_error_code(
-        router.add(1, HttpMethod::Get, "/:123bad"),
-        RouterErrorCode::InvalidParamName,
-    );
-    assert_error_code(
-        router.add(1, HttpMethod::Get, "/foo:bar"),
-        RouterErrorCode::InvalidParamName,
-    );
+    match expect_pattern_error(router.add(1, HttpMethod::Get, "/:123bad")) {
+        PatternError::ParameterInvalidStart { found, .. } => assert_eq!(found, '1'),
+        other => panic!("unexpected pattern error: {other:?}"),
+    }
+    match expect_pattern_error(router.add(1, HttpMethod::Get, "/foo:bar")) {
+        PatternError::MixedParameterLiteralSyntax { .. } => {}
+        other => panic!("unexpected pattern error: {other:?}"),
+    }
 }
 
 #[test]
 fn router_rejects_duplicate_param_names_within_route() {
     let router = Router::new(None);
     let err = router.add(1, HttpMethod::Get, "/users/:id/details/:id");
-    assert_error_code(err, RouterErrorCode::DuplicateParamName);
+    match expect_radix_error(err) {
+        RadixError::DuplicateParamName { param, .. } => assert_eq!(param, "id"),
+        other => panic!("unexpected radix error: {other:?}"),
+    }
 }
 
 #[test]
@@ -286,14 +356,28 @@ fn router_detects_param_name_conflicts_between_routes() {
         .expect("first route should register");
 
     let err = router.add(1, HttpMethod::Get, "/users/:name/profile");
-    assert_error_code(err, RouterErrorCode::ParamNameConflicted);
+    match expect_radix_error(err) {
+        RadixError::ParamNameConflict { pattern } => {
+            assert!(pattern.contains("name"), "unexpected pattern: {pattern}");
+        }
+        other => panic!("unexpected radix error: {other:?}"),
+    }
 }
 
 #[test]
 fn router_rejects_invalid_wildcard_position() {
     let router = Router::new(None);
     let err = router.add(1, HttpMethod::Get, "/files/*/meta");
-    assert_error_code(err, RouterErrorCode::InvalidWildcard);
+    match expect_radix_error(err) {
+        RadixError::WildcardMustBeTerminal {
+            segment_index,
+            total_segments,
+        } => {
+            assert_eq!(segment_index, 1);
+            assert_eq!(total_segments, 3);
+        }
+        other => panic!("unexpected radix error: {other:?}"),
+    }
 }
 
 #[test]
@@ -301,7 +385,12 @@ fn router_limits_segment_length() {
     let router = Router::new(None);
     let long_segment = format!("/{}", "a".repeat(260));
     let err = router.add(1, HttpMethod::Get, &long_segment);
-    assert_error_code(err, RouterErrorCode::PatternTooLong);
+    match expect_radix_error(err) {
+        RadixError::PatternLengthExceeded { segment, .. } => {
+            assert_eq!(segment.len(), 260);
+        }
+        other => panic!("unexpected radix error: {other:?}"),
+    }
 }
 
 #[test]
@@ -315,7 +404,10 @@ fn router_enforces_max_route_limit() {
     }
 
     let err = router.add(1, HttpMethod::Get, "/limit/overflow");
-    assert_error_code(err, RouterErrorCode::MaxRoutesExceeded);
+    match expect_radix_error(err) {
+        RadixError::MaxRoutesExceeded { limit, .. } => assert_eq!(limit, u16::MAX),
+        other => panic!("unexpected radix error: {other:?}"),
+    }
 }
 
 #[test]

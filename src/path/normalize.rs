@@ -1,29 +1,17 @@
-use crate::errors::{RouterError, RouterErrorCode, RouterResult};
-use serde_json::json;
+use crate::errors::{RouterError, RouterResult};
+use crate::path::PathError;
 
 #[inline]
 #[tracing::instrument(level = "trace", skip(path), fields(path_len=path.len() as u64))]
 pub fn normalize_and_validate_path(path: &str) -> RouterResult<String> {
     if !path.is_ascii() {
-        return Err(Box::new(RouterError::new(
-            RouterErrorCode::InvalidPath,
-            "router",
-            "path_processing",
-            "validation",
-            "Path contains non-ASCII characters".to_string(),
-            Some(json!({"path": path, "operation": "normalize_and_validate"})),
-        )));
+        return Err(RouterError::from(PathError::NonAscii {
+            input: path.to_string(),
+        }));
     }
     let bytes = path.as_bytes();
     if bytes.is_empty() {
-        return Err(Box::new(RouterError::new(
-            RouterErrorCode::EmptyPath,
-            "router",
-            "path_processing",
-            "validation",
-            "Path is empty".to_string(),
-            Some(json!({"path": path, "operation": "normalize_and_validate"})),
-        )));
+        return Err(RouterError::from(PathError::Empty));
     }
     let mut end = bytes.len();
     while end > 1 && bytes[end - 1] == b'/' {
@@ -33,16 +21,10 @@ pub fn normalize_and_validate_path(path: &str) -> RouterResult<String> {
     // Validate allowed characters while scanning once
     for &b in &bytes[..end] {
         if b <= 0x20 {
-            return Err(Box::new(RouterError::new(
-                RouterErrorCode::InvalidPath,
-                "router",
-                "path_processing",
-                "validation",
-                "Path contains control characters or spaces".to_string(),
-                Some(
-                    json!({"path": path, "invalid_byte": b, "operation": "normalize_and_validate"}),
-                ),
-            )));
+            return Err(RouterError::from(PathError::ControlOrWhitespace {
+                input: path.to_string(),
+                byte: b,
+            }));
         }
         match b {
             b'a'..=b'z'
@@ -68,16 +50,11 @@ pub fn normalize_and_validate_path(path: &str) -> RouterResult<String> {
             | b'/'
             | b'%' => {}
             _ => {
-                return Err(Box::new(RouterError::new(
-                    RouterErrorCode::InvalidPath,
-                    "router",
-                    "path_processing",
-                    "validation",
-                    "Path contains disallowed characters".to_string(),
-                    Some(
-                        json!({"path": path, "invalid_byte": b, "invalid_char": b as char, "operation": "normalize_and_validate"}),
-                    ),
-                )));
+                    return Err(RouterError::from(PathError::DisallowedCharacter {
+                        input: path.to_string(),
+                        character: b as char,
+                        byte: b,
+                    }));
             }
         }
     }
@@ -93,16 +70,10 @@ pub fn normalize_and_validate_path(path: &str) -> RouterResult<String> {
         normalized = normalized.replace("//", "/");
     }
     if normalized == "/.." || normalized.starts_with("/../") || normalized.contains("/../") {
-        return Err(Box::new(RouterError::new(
-            RouterErrorCode::InvalidPath,
-            "router",
-            "path_processing",
-            "validation",
-            "Path contains invalid parent directory references".to_string(),
-            Some(
-                json!({"path": path, "normalized": normalized, "operation": "normalize_and_validate"}),
-            ),
-        )));
+        return Err(RouterError::from(PathError::InvalidParentTraversal {
+            input: path.to_string(),
+            normalized,
+        }));
     }
 
     Ok(normalized)

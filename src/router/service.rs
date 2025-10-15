@@ -1,10 +1,9 @@
-use crate::errors::{RouterError, RouterErrorCode, RouterResult};
+use crate::errors::{RouterError, RouterResult};
 use crate::readonly::RouterReadOnly;
 use crate::registry::RouteRegistry;
 use crate::router::RouterOptions;
 use crate::types::{HttpMethod, RouteMatch, WorkerId};
 use parking_lot::RwLock;
-use serde_json::json;
 use std::sync::Arc;
 use std::sync::OnceLock;
 
@@ -40,15 +39,9 @@ impl Router {
         let mut guard = self.inner.write();
 
         if guard.readonly.get().is_some() {
-            let detail = json!({ "path": path });
-            return Err(Box::new(RouterError::new(
-                RouterErrorCode::AlreadySealed,
-                "router",
-                "add",
-                "validation",
-                "Router is sealed; cannot insert routes".to_string(),
-                Some(detail),
-            )));
+            return Err(RouterError::AddWhileSealed {
+                path: path.to_string(),
+            });
         }
 
         guard.registry.insert(worker_id, method, path)
@@ -62,15 +55,9 @@ impl Router {
 
         if guard.readonly.get().is_some() {
             let entries_vec: Vec<(HttpMethod, String)> = entries.into_iter().collect();
-            let detail = json!({ "count": entries_vec.len() });
-            return Err(Box::new(RouterError::new(
-                RouterErrorCode::AlreadySealed,
-                "router",
-                "add_bulk",
-                "validation",
-                "Router is sealed; cannot insert bulk routes".to_string(),
-                Some(detail),
-            )));
+            return Err(RouterError::BulkAddWhileSealed {
+                count: entries_vec.len(),
+            });
         }
 
         guard.registry.insert_bulk(worker_id, entries)
@@ -91,14 +78,7 @@ impl Router {
 
         match guard.readonly.get() {
             Some(ro) => ro.find(method, path),
-            None => Err(Box::new(RouterError::new(
-                RouterErrorCode::NotSealed,
-                "router",
-                "find",
-                "validation",
-                "Router is not sealed; cannot perform find".to_string(),
-                None,
-            ))),
+            None => Err(RouterError::FindWhileMutable),
         }
     }
 
@@ -107,14 +87,7 @@ impl Router {
 
         match guard.readonly.get() {
             Some(ro) => Ok(ro.clone()),
-            None => Err(Box::new(RouterError::new(
-                RouterErrorCode::NotSealed,
-                "router",
-                "get_readonly",
-                "validation",
-                "Router is not sealed; cannot get readonly snapshot".to_string(),
-                None,
-            ))),
+            None => Err(RouterError::ReadOnlyUnavailable),
         }
     }
 
