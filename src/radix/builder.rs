@@ -20,7 +20,7 @@ pub(super) fn finalize(tree: &mut RadixTree) {
     });
 
     // --- Automatic Optimization Logic ---
-    if tree.options.enable_automatic_optimization {
+    if tree.options.tuning.enable_automatic_optimization {
         // 1. Auto-enable root pruning
         let has_root_param_or_wildcard = {
             let n = &tree.root_node;

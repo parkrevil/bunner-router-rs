@@ -10,5 +10,9 @@ pub mod tools;
 pub mod types;
 
 pub use enums::HttpMethod;
-pub use router::{Router, RouterError, RouterOptions, RouterReadOnly, RouterResult};
+pub use router::{
+    MatchOrder, ParamStyle, ParserOptions, ParserOptionsBuilder, RouteOptions, RouteOptionsBuilder,
+    Router, RouterError, RouterOptions, RouterOptionsBuilder, RouterOptionsError, RouterReadOnly,
+    RouterResult, RouterTuning,
+};
 pub use types::RouteMatch;

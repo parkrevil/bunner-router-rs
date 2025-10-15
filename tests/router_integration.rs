@@ -1,5 +1,6 @@
 use bunner_router_rs::{
-    HttpMethod, Router, RouterError, RouterOptions, RouterResult, path::PathError,
+    HttpMethod, MatchOrder, ParserOptionsBuilder, RouteOptionsBuilder, Router, RouterError,
+    RouterOptions, RouterOptionsError, RouterResult, RouterTuning, path::PathError,
     pattern::PatternError, radix::RadixError, readonly::ReadOnlyError,
 };
 use std::sync::Arc;
@@ -417,11 +418,18 @@ fn router_enforces_max_route_limit() {
 
 #[test]
 fn router_respects_custom_options() {
-    let options = RouterOptions {
+    let tuning = RouterTuning {
         enable_root_level_pruning: true,
         enable_static_route_full_mapping: true,
         enable_automatic_optimization: false,
     };
+
+    let options = RouterOptions::builder()
+        .case_sensitive(true)
+        .match_order(MatchOrder::DefinedFirst)
+        .tuning(tuning)
+        .build()
+        .expect("custom configuration should be valid");
 
     let router = Router::new(Some(options));
     router
@@ -432,4 +440,43 @@ fn router_respects_custom_options() {
     router
         .find(HttpMethod::Get, "/options")
         .expect("lookup should still succeed with custom options");
+}
+
+#[test]
+fn router_options_builder_rejects_invalid_depth() {
+    let err = RouterOptions::builder()
+        .max_param_depth(0)
+        .build()
+        .expect_err("zero max param depth should be rejected");
+
+    assert!(matches!(
+        err,
+        RouterOptionsError::MaxParamDepthInvalid { .. }
+    ));
+}
+
+#[test]
+fn route_options_builder_enforces_priority_range() {
+    let err = RouteOptionsBuilder::default()
+        .priority(150)
+        .build()
+        .expect_err("priority above allowed range should fail");
+
+    assert!(matches!(
+        err,
+        RouterOptionsError::RoutePriorityOutOfRange { value: 150, .. }
+    ));
+}
+
+#[test]
+fn parser_options_builder_detects_duplicate_escape_chars() {
+    let err = ParserOptionsBuilder::default()
+        .escape_chars(vec!['\\', '\\'])
+        .build()
+        .expect_err("duplicate escape chars should be rejected");
+
+    assert!(matches!(
+        err,
+        RouterOptionsError::DuplicateEscapeChar { ch: '\\' }
+    ));
 }

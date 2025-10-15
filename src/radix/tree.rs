@@ -44,6 +44,9 @@ pub struct RadixTree {
 
 impl RadixTree {
     pub fn new(configuration: RouterOptions) -> Self {
+        let enable_root_level_pruning = configuration.tuning.enable_root_level_pruning;
+        let enable_static_route_full_mapping =
+            configuration.tuning.enable_static_route_full_mapping;
         Self {
             root_node: super::node::RadixTreeNode::default(),
             options: configuration,
@@ -54,8 +57,8 @@ impl RadixTree {
             root_wildcard_present: [false; HTTP_METHOD_COUNT],
             static_route_full_mapping: Default::default(),
             method_length_buckets: [0; HTTP_METHOD_COUNT],
-            enable_root_level_pruning: configuration.enable_root_level_pruning,
-            enable_static_route_full_mapping: configuration.enable_static_route_full_mapping,
+            enable_root_level_pruning,
+            enable_static_route_full_mapping,
             next_route_key: std::sync::atomic::AtomicU16::new(0),
         }
     }

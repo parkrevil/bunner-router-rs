@@ -21,6 +21,7 @@ parking_lot = "0.12"
 smallvec = "1.13"
 tracing = "0.1"
 thiserror = "1.0"
+serde = { version = "1.0", features = ["derive"] }
 
 [dev-dependencies.cargo-husky]
 version = "1"

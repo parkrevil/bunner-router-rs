@@ -34,7 +34,8 @@ impl RouteRegistry {
     }
 
     pub fn reset_after_seal(&mut self) {
-        self.tree = RadixTree::new(RouterOptions::default());
+        let options = self.tree.options.clone();
+        self.tree = RadixTree::new(options);
         self.metrics = RegistryMetrics::default();
     }
 
