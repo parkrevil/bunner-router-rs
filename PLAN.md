@@ -19,26 +19,15 @@
 
 | Phase | 제목 | 핵심 구현 항목 | 주요 산출물 | 선행 조건 |
 |-------|------|----------------|-------------|-----------|
-| P0 | 기반 강화 | 테스트·벤치·문서 골격 정비 | 테스트 스켈레톤, 벤치 템플릿, 문서 구조 | 없음 |
-| P1 | 설정 계층 수립 | RouterConfig/RouteOptions/ParserOptions 모델링 | 옵션 구조체, 기본값/검증, 호환 어댑터 | P0 |
+| P1 | 설정 계층 수립 | RouterConfig/RouteOptions/ParserOptions 모델링 | 옵션 구조체, 기본값/검증, 호환 어댑터 | 없음 |
 | P2 | 경로 전처리 & 전역 옵션 | case_sensitive, trailing slash, normalizer, 캐시 뼈대 | Preprocess 파이프라인, 캐시 기본, 옵션 테스트 | P1 |
 | P3 | 패턴 AST & 파서 확장 | 정규식·옵셔널·반복·파서 고급 옵션 | Pattern AST, Parser, 검증 테스트 | P2 |
 | P4 | 매칭 엔진 & 런타임 옵션 | match_order, repeat_match_mode, fallback, 파라미터 추출 | 라딕스 트리 갱신, 런타임 파이프라인, 성능 검증 | P3 |
 | P5 | 개발자 편의 기능 | inspect/test/compile/tokens/toRegex/reverse | 고급 API, 예제, 안정성 표기 | P4 |
-| P6 | 안정화 & 릴리스 | 문서/QA/버전 정책 | CHANGELOG, Migration Guide, 출시 체크리스트 | P5 |
 
-각 Phase 종료 조건: `cargo fmt`, `cargo clippy`, `cargo test` 통과 + 관련 README/Docs/CHANGELOG 업데이트.
+각 Phase 종료 조건: 해당 기능이 반영된 통합 테스트 시나리오가 통과할 것.
 
 ## 2. Phase 상세 계획
-
-### Phase 0. 기반 강화
-- **목표**: 대규모 기능 확장을 지탱할 품질 인프라 구축.
-- **작업**
-  - `tests/pattern_parser.rs`, `tests/runtime_options.rs` 등 신규 테스트 스위트 뼈대 작성.
-  - Criterion 벤치 템플릿(`benches/lookup.rs`, `benches/insert.rs`) 추가.
-  - 문서 구조 정리(`docs/roadmap.md`), README에 향후 지원 기능 섹션 삽입.
-- **Exit Criteria**: 신규 테스트/벤치가 CI에서 실행되고, 문서에 로드맵이 반영됨.
-- **리스크**: 기존 테스트 부재 → 최소 happy-path/에러 케이스 명시.
 
 ### Phase 1. 설정 계층 수립
 - **목표**: 모든 옵션을 담는 명확한 설정 계층 정의 및 기본값 확정.
@@ -50,7 +39,7 @@
   - `RouterConfig`, `RouteOptions`, `ParserOptions` 및 Builder/serde 지원.
   - 기본값 테이블과 유효성 검사 로직(예: `priority` 범위, `alias` 중복 금지).
   - 기존 `Router::new(Some(RouterOptions))`를 새 구조로 브리지.
-- **Exit Criteria**: 옵션 구조에 대한 단위 테스트 + 문서 표 갱신.
+- **Exit Criteria**: 설정 조합별 동작을 검증하는 통합 테스트가 통과.
 - **리스크**: API 복잡도 → Builder 패턴, serde config 파일 지원.
 
 ### Phase 2. 경로 전처리 & 전역 옵션 구현
@@ -62,7 +51,7 @@
   - 기본 세그먼트 패턴(`param_pattern_default`) 적용 경로 작성.
   - LRU 캐시(스켈레톤) 도입 및 `cache_routes` toggle.
   - `debug` flag에 따른 트레이싱 필드 확장.
-- **Exit Criteria**: 경로 변환/캐시 on-off 통합 테스트, 로그 검증.
+- **Exit Criteria**: 경로 전처리와 캐시 정책을 검증하는 통합 테스트가 통과.
 - **리스크**: 기존 정규화와 충돌 → 기본값을 현행과 동일 유지, 회귀 테스트 강화.
 
 ### Phase 3. 패턴 AST & 파서 확장
@@ -72,8 +61,7 @@
   - `PatternAst` 정의(Literal, Param{constraint, repeat}, Group{optional, children}, Wildcard).
   - 파서 리팩터: 스타일 변환(`:id` ↔ `{id}`), escape 처리, 중첩/반복 허용 여부 적용.
   - 정규식 검증(`validate_regex_syntax`)과 constraints vs inline precedence 명문화.
-  - 정상/에러/옵션 off 시나리오 단위 테스트 작성.
-- **Exit Criteria**: 모든 파서 옵션 테스트 녹색, 문법 정의 문서화.
+- **Exit Criteria**: 다양한 패턴 시나리오를 검증하는 통합 테스트가 통과.
 - **리스크**: 파서 복잡도 → 명시적 상태기계 또는 PEG 도구 도입 검토.
 
 ### Phase 4. 매칭 엔진 & 런타임 옵션
@@ -90,7 +78,7 @@
   - 파라미터 추출/디코딩/타입 변환 파이프라인 구현.
   - fallback 정책(`nearest`, `none`, `default`)과 기본 라우트 지원.
   - `segment_validator` 훅 호출 시점 명시.
-- **Exit Criteria**: 통합 테스트(복합 패턴, fallback, 타입 변환) 통과 + 벤치 회귀 ±5% 이내.
+- **Exit Criteria**: 복합 매칭·fallback·타입 변환을 검증하는 통합 테스트가 통과.
 - **리스크**: 트리 폭증, 성능 저하 → 캐시, pruning, lazy evaluation 적용.
 
 ### Phase 5. 개발자 편의 기능
@@ -101,35 +89,19 @@
   - 파서 결과 노출 및 정규식 변환 API 구현.
   - 런타임 시뮬레이션(`test`) 리포트 포맷 정의.
   - Route naming(`RouteOptions.meta.name`)과 reverse 매핑 로직.
-  - README/문서/예제 업데이트.
-- **Exit Criteria**: 각 API 단위 테스트 + 문서 예제 제공.
+- **Exit Criteria**: 고급 API 시나리오를 검증하는 통합 테스트가 통과.
 - **리스크**: 공개 API 증가 → Beta 태그, 안정성 정책 명시.
 
-### Phase 6. 안정화 & 릴리스
-- **목표**: 1.0 릴리스 준비 및 문서화.
-- **작업**
-  - CHANGELOG, MIGRATION GUIDE, 옵션 매트릭스 업데이트.
-  - 최종 QA 체크리스트(테스트, 벤치, 문서) 수행.
-  - 버전 정책 확정(Experimental → Stable 전환).
-- **Exit Criteria**: QA 게이트 통과, 릴리스 태그(`1.0.0`) 발행 준비 완료.
-
 ## 3. 교차 작업 & 의존성
-- CI 파이프라인: `fmt`, `clippy`, `test`, `nextest`, criterion(선택) 자동화.
-- 문서화: 각 Phase 종료 시 README/Docs/PLAN/CHANGELOG 동시 갱신.
+- 통합 테스트: 각 Phase에서 추가된 기능은 통합 테스트 시나리오에 즉시 편입하여 회귀를 방지한다.
 - 피드백 루프: `allow_nested_optional`, `repeat_match_mode=lazy` 등은 Feature Flag/RFC로 통제.
-- 호환성: 기존 API는 Deprecation 경고와 마이그레이션 가이드 제공 후 단계적 폐기.
+- 호환성: 기존 API는 Deprecation 경고를 통해 단계적으로 폐기한다.
 
 ## 4. 주요 리스크 및 대응
 - **복잡도 폭증**: 단계별 Feature Flag, 명확한 옵션 조합 검증.
-- **성능 회귀**: 벤치마크 + flamegraph로 주기적 측정, 캐시/프루닝 적용.
-- **옵션 조합 폭발**: Validation Layer 강화, 문서에 지원/비지원 조합 명시.
-- **DX 기대치 상승**: Phase 5에서 실용 예제와 가이드 확보.
-
-## 5. 릴리스 전략
-1. Phase 완료 시마다 `0.x` 마이너 릴리스 + CHANGELOG 기록.
-2. 실험적 기능은 `unstable` Feature Flag로 제공, 피드백 수집.
-3. Phase 6 완료 후 `1.0.0` 정식 릴리스.
-4. 릴리스 노트에 성능 수치/비교표/마이그레이션 절차 포함.
+- **성능 회귀**: 캐시·프루닝·지연 평가 같은 런타임 전략을 통해 성능을 보호.
+- **옵션 조합 폭발**: Validation Layer 강화로 지원/비지원 조합을 코드 수준에서 차단.
+- **DX 기대치 상승**: Phase 5 기능으로 실용적인 디버깅·역방향 API를 제공.
 
 ---
-이 마스터 플랜을 따르면, 라우팅 표현력·설정·런타임·DX 영역을 순차적으로 강화하면서도 기존 경량 엔진 특성을 유지하고 안정적으로 1.0 릴리스를 준비할 수 있다.
+이 마스터 플랜을 따르면, 라우팅 표현력·설정·런타임·DX 영역을 순차적으로 강화하면서도 통합 테스트를 통해 단계별 기능 완성도를 확인할 수 있다.
