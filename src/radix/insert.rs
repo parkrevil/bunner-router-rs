@@ -1,16 +1,14 @@
 use super::{
     MAX_ROUTES, RadixTree, RadixTreeNode, create_node_box_from_arena_pointer, node::PatternMeta,
 };
-use crate::enums::HttpMethod;
-use crate::errors::RouterErrorCode;
-use crate::interner::Interner;
+use crate::errors::{RouterError, RouterErrorCode, RouterResult};
 use crate::path::normalize_and_validate_path;
-use crate::pattern::parse_segment;
 use crate::pattern::{
-    SegmentPart, SegmentPattern, pattern_compatible_policy, pattern_is_pure_static, pattern_score,
+    SegmentPart, SegmentPattern, parse_segment, pattern_compatible_policy, pattern_is_pure_static,
+    pattern_score,
 };
-use crate::structures::{RouterError, RouterResult};
-use crate::types::WorkerId;
+use crate::tools::Interner;
+use crate::types::{HttpMethod, WorkerId};
 use hashbrown::HashSet;
 use serde_json::json;
 use std::sync::atomic::AtomicU16;

@@ -1,7 +1,6 @@
-use bunner_router_rs::enums::HttpMethod;
-use bunner_router_rs::errors::RouterErrorCode;
-use bunner_router_rs::structures::{RouterError, RouterResult};
-use bunner_router_rs::{Router, RouterOptions};
+use bunner_router_rs::{
+    HttpMethod, Router, RouterError, RouterErrorCode, RouterOptions, RouterResult,
+};
 use std::sync::Arc;
 
 fn assert_error_code<T>(result: RouterResult<T>, expected: RouterErrorCode) -> RouterError {

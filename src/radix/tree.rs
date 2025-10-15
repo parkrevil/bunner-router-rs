@@ -1,6 +1,20 @@
 use bumpalo::Bump;
 use hashbrown::HashMap as FastHashMap;
 use hashbrown::HashSet as FastHashSet;
+
+use crate::errors::{RouterError, RouterErrorCode, RouterResult};
+use crate::pattern::{SegmentPart, SegmentPattern};
+use crate::router::RouterOptions;
+use crate::tools::Interner;
+use crate::types::{HttpMethod, WorkerId};
+
+pub const HTTP_METHOD_COUNT: usize = 7;
+
+// Fixed maximum routes across all builds for predictable memory layout
+pub const MAX_ROUTES: u16 = 65_535;
+
+pub(crate) const STATIC_MAP_THRESHOLD: usize = 50;
+
 type IndexedEntry = (usize, HttpMethod, String, u8, usize, bool);
 type ParsedEntry = (
     usize,
@@ -11,58 +25,30 @@ type ParsedEntry = (
     bool,
     Vec<String>,
 );
-use crate::pattern::SegmentPart;
-use crate::pattern::SegmentPattern;
-
-use super::RouterOptions;
-use crate::enums::HttpMethod;
-use crate::interner::Interner;
-use crate::types::WorkerId;
-
-pub(super) const HTTP_METHOD_COUNT: usize = 7;
-
-// Fixed maximum routes across all builds for predictable memory layout
-pub(super) const MAX_ROUTES: u16 = 65_535;
-
-const STATIC_MAP_THRESHOLD: usize = 50;
-
-mod alloc;
-mod builder;
-mod compression;
-mod indices;
-mod insert;
-mod mask;
-mod memory;
-pub mod node;
-mod static_map;
-pub mod traversal;
-
-pub(crate) use alloc::{NodeBox, create_node_box_from_arena_pointer};
-pub use node::RadixTreeNode;
 
 #[derive(Debug, Default)]
 pub struct RadixTree {
-    pub(super) root_node: RadixTreeNode,
-    pub(super) options: RouterOptions,
-    pub(super) arena: Bump,
-    pub(super) interner: Interner,
-    pub(super) method_first_byte_bitmaps: [[u64; 4]; HTTP_METHOD_COUNT],
-    pub(super) root_parameter_first_present: [bool; HTTP_METHOD_COUNT],
-    pub(super) root_wildcard_present: [bool; HTTP_METHOD_COUNT],
-    pub(super) static_route_full_mapping: [FastHashMap<Box<str>, u16>; HTTP_METHOD_COUNT],
-    pub(super) method_length_buckets: [u64; HTTP_METHOD_COUNT],
+    pub(crate) root_node: super::node::RadixTreeNode,
+    pub(crate) options: RouterOptions,
+    pub(crate) arena: Bump,
+    pub(crate) interner: Interner,
+    pub(crate) method_first_byte_bitmaps: [[u64; 4]; HTTP_METHOD_COUNT],
+    pub(crate) root_parameter_first_present: [bool; HTTP_METHOD_COUNT],
+    pub(crate) root_wildcard_present: [bool; HTTP_METHOD_COUNT],
+    pub(crate) static_route_full_mapping: [FastHashMap<Box<str>, u16>; HTTP_METHOD_COUNT],
+    pub(crate) method_length_buckets: [u64; HTTP_METHOD_COUNT],
     pub enable_root_level_pruning: bool,
     pub enable_static_route_full_mapping: bool,
-    pub(super) next_route_key: std::sync::atomic::AtomicU16,
+    pub(crate) next_route_key: std::sync::atomic::AtomicU16,
     // Side-table mapping route key index -> initial registrant worker id.
     // Kept here so we can drop it at finalize() to reclaim heap memory.
-    pub(super) route_worker_side_table: Vec<Option<u32>>,
+    pub(crate) route_worker_side_table: Vec<Option<u32>>,
 }
 
 impl RadixTree {
     pub fn new(configuration: RouterOptions) -> Self {
         Self {
-            root_node: RadixTreeNode::default(),
+            root_node: super::node::RadixTreeNode::default(),
             options: configuration,
             arena: Bump::with_capacity(128 * 1024),
             interner: Interner::new(),
@@ -79,20 +65,16 @@ impl RadixTree {
     }
 
     pub fn finalize(&mut self) {
-        builder::finalize(self);
+        super::builder::finalize(self);
     }
 
-    pub fn insert_bulk<I>(
-        &mut self,
-        worker_id: WorkerId,
-        entries: I,
-    ) -> super::structures::RouterResult<Vec<u16>>
+    pub fn insert_bulk<I>(&mut self, worker_id: WorkerId, entries: I) -> RouterResult<Vec<u16>>
     where
         I: IntoIterator<Item = (HttpMethod, String)>,
     {
         if self.root_node.is_sealed() {
-            return Err(Box::new(super::structures::RouterError::new(
-                super::errors::RouterErrorCode::AlreadySealed,
+            return Err(Box::new(RouterError::new(
+                RouterErrorCode::AlreadySealed,
                 "router",
                 "route_registration",
                 "validation",
@@ -139,8 +121,7 @@ impl RadixTree {
 
                 handles.push(thread::spawn(move || {
                     for (idx, method, path, head, plen, is_static) in local.into_iter() {
-                        let parsed =
-                            super::radix_tree::insert::prepare_path_segments_standalone(&path);
+                        let parsed = crate::radix::insert::prepare_path_segments_standalone(&path);
                         match parsed {
                             Ok(segs) => {
                                 let mut lits: Vec<String> = Vec::new();
@@ -164,7 +145,7 @@ impl RadixTree {
             }
             drop(tx);
 
-            let mut first_err: Option<Box<super::structures::RouterError>> = None;
+            let mut first_err: Option<Box<RouterError>> = None;
             for msg in rx.iter() {
                 match msg {
                     Ok((idx, method, segs, head, plen, is_static, lits)) => {
@@ -187,7 +168,7 @@ impl RadixTree {
         } else {
             // fast path: single item
             for (idx, method, path, head, plen, is_static) in indexed.into_iter() {
-                let segs = super::radix_tree::insert::prepare_path_segments_standalone(&path)?;
+                let segs = crate::radix::insert::prepare_path_segments_standalone(&path)?;
                 let mut lits: Vec<String> = Vec::new();
                 for pat in segs.iter() {
                     for part in pat.parts.iter() {
@@ -228,8 +209,8 @@ impl RadixTree {
             use std::sync::atomic::Ordering;
             let cur = self.next_route_key.load(Ordering::Relaxed);
             if cur as usize + n >= MAX_ROUTES as usize {
-                return Err(Box::new(super::structures::RouterError::new(
-                    super::errors::RouterErrorCode::MaxRoutesExceeded,
+                return Err(Box::new(RouterError::new(
+                    RouterErrorCode::MaxRoutesExceeded,
                     "router",
                     "route_registration",
                     "validation",

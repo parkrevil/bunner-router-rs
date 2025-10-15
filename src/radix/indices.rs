@@ -1,6 +1,6 @@
 use super::alloc::NodeBox;
 use super::node::RadixTreeNode;
-use crate::interner::Interner;
+use crate::tools::Interner;
 use smallvec::SmallVec;
 
 /// Clears all index mirrors across the subtree rooted at `root`.

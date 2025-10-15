@@ -1,10 +1,9 @@
-use crate::errors::RouterErrorCode;
-use crate::structures::{RouterError, RouterResult};
+use crate::errors::{RouterError, RouterErrorCode, RouterResult};
 use serde_json::json;
 
 #[inline]
 #[tracing::instrument(level = "trace", skip(path), fields(path_len=path.len() as u64))]
-pub(crate) fn normalize_and_validate_path(path: &str) -> RouterResult<String> {
+pub fn normalize_and_validate_path(path: &str) -> RouterResult<String> {
     if !path.is_ascii() {
         return Err(Box::new(RouterError::new(
             RouterErrorCode::InvalidPath,

@@ -1,6 +1,5 @@
+use super::codes::RouterErrorCode;
 use serde::{Deserialize, Serialize};
-
-use crate::errors::RouterErrorCode;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RouterError {
