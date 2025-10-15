@@ -1,5 +1,7 @@
-use bunner_router_rs::pattern::{PatternNode, Quantifier, parse_pattern};
-use bunner_router_rs::router::{ParamStyle, ParserOptions, ParserOptionsBuilder};
+use bunner_router_rs::pattern::{
+    PatternNode, PatternToken, Quantifier, analyze, compile, parse_pattern, to_regex, tokens,
+};
+use bunner_router_rs::router::{ParamStyle, ParserOptions, ParserOptionsBuilder, RepeatMatchMode};
 
 fn default_parser_options() -> ParserOptions {
     ParserOptions::default()
@@ -152,4 +154,77 @@ fn respects_escape_characters() {
         PatternNode::Literal(text) => assert_eq!(text, "/files/:id"),
         other => panic!("expected literal node, got {other:?}"),
     }
+}
+
+#[test]
+fn pattern_tokens_flatten_structure() {
+    let options = ParserOptionsBuilder::default()
+        .allow_regex_in_param(true)
+        .build()
+        .expect("builder should succeed");
+    let tokens = tokens("/users/:id(\\d+)(/posts/:slug)?", &options)
+        .expect("token extraction should succeed");
+
+    assert_eq!(tokens.len(), 6);
+    assert!(matches!(tokens[0], PatternToken::Literal { ref value } if value == "/users/"));
+    match &tokens[1] {
+        PatternToken::Parameter {
+            name,
+            constraint,
+            quantifier,
+            style,
+        } => {
+            assert_eq!(name, "id");
+            assert_eq!(constraint.as_deref(), Some(r"\d+"));
+            assert_eq!(*quantifier, Quantifier::One);
+            assert_eq!(*style, ParamStyle::Colon);
+        }
+        other => panic!("unexpected token: {other:?}"),
+    }
+    assert!(
+        matches!(tokens[2], PatternToken::GroupStart { quantifier } if quantifier == Quantifier::ZeroOrOne)
+    );
+    assert!(matches!(tokens[3], PatternToken::Literal { ref value } if value == "/posts/"));
+    match &tokens[4] {
+        PatternToken::Parameter {
+            name, constraint, ..
+        } => {
+            assert_eq!(name, "slug");
+            assert!(constraint.is_none());
+        }
+        other => panic!("unexpected token: {other:?}"),
+    }
+    assert!(matches!(tokens[5], PatternToken::GroupEnd));
+}
+
+#[test]
+fn pattern_to_regex_respects_repeat_mode() {
+    let options = ParserOptionsBuilder::default()
+        .allow_repeat_in_optional(true)
+        .build()
+        .expect("builder should succeed");
+    let greedy = to_regex("/files/:name*", &options, RepeatMatchMode::Greedy, "[^/]+")
+        .expect("regex generation should succeed");
+    let lazy = to_regex("/files/:name*", &options, RepeatMatchMode::Lazy, "[^/]+")
+        .expect("regex generation should succeed");
+
+    assert_eq!(greedy, "^/files/(?:[^/]+)*$");
+    assert_eq!(lazy, "^/files/(?:[^/]+)*?$");
+}
+
+#[test]
+fn pattern_analyze_returns_compiled_pattern() {
+    let options = ParserOptions::default();
+    let analysis = analyze("/files/*", &options, RepeatMatchMode::Greedy, "[^/]+")
+        .expect("analysis should succeed");
+
+    assert_eq!(analysis.pattern, "/files/*");
+    assert_eq!(analysis.ast.nodes.len(), 2);
+    assert!(analysis.compiled.has_wildcard);
+    assert_eq!(analysis.tokens.len(), 2);
+
+    let compiled_direct =
+        compile("/files/*", &options, RepeatMatchMode::Greedy).expect("compile should succeed");
+    assert_eq!(analysis.compiled, compiled_direct);
+    assert_eq!(analysis.regex, "^/files/.*$");
 }

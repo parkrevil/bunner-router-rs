@@ -1,3 +1,4 @@
+mod analysis;
 mod ast;
 mod compiled;
 mod error;
@@ -7,6 +8,7 @@ mod parser;
 mod scoring;
 mod segment;
 
+pub use analysis::{PatternAnalysis, PatternToken, analyze, compile, to_regex, tokens};
 pub use ast::{
     GroupNode, ParameterConstraint, ParameterNode, PatternAst, PatternNode, Quantifier,
     WildcardNode,

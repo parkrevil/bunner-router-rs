@@ -283,7 +283,9 @@ impl<'a> PatternParser<'a> {
         let mut constraint = String::new();
         while let Some(ch) = self.peek() {
             if self.is_escape_char(ch) {
-                constraint.push(self.consume_escape_char()?);
+                let escaped = self.consume_escape_char()?;
+                constraint.push('\\');
+                constraint.push(escaped);
                 continue;
             }
             match ch {
@@ -325,7 +327,9 @@ impl<'a> PatternParser<'a> {
                 break;
             }
             if self.is_escape_char(ch) {
-                value.push(self.consume_escape_char()?);
+                let escaped = self.consume_escape_char()?;
+                value.push('\\');
+                value.push(escaped);
             } else {
                 value.push(ch);
                 self.next();
