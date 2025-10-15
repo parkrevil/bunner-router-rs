@@ -3,14 +3,16 @@ use crate::matcher::ParamEntry;
 use crate::pattern::match_segment;
 use crate::readonly::ReadOnlyNode;
 use crate::types::RouteMatch;
+use regex::Regex;
 
 pub fn find_route(
     root: &ReadOnlyNode,
     method: HttpMethod,
     normalized: &str,
     params: &mut Vec<ParamEntry>,
+    default_param_pattern: &Regex,
 ) -> Option<RouteMatch> {
-    find_from(root, method, normalized, 0, params)
+    find_from(root, method, normalized, 0, params, default_param_pattern)
 }
 
 fn find_from(
@@ -19,6 +21,7 @@ fn find_from(
     path: &str,
     index: usize,
     params: &mut Vec<ParamEntry>,
+    default_param_pattern: &Regex,
 ) -> Option<RouteMatch> {
     let current_index = skip_slashes(path, index);
 
@@ -28,25 +31,52 @@ fn find_from(
             return None;
         }
         if let Some(child) = node.fused_child.as_deref() {
-            return find_from(child, method, path, current_index + edge.len(), params);
+            return find_from(
+                child,
+                method,
+                path,
+                current_index + edge.len(),
+                params,
+                default_param_pattern,
+            );
         }
         return None;
     }
 
     if current_index >= path.len() {
+        if path.as_bytes().last() == Some(&b'/')
+            && let Some(next_node) = node.static_children.get("")
+            && let Some(found) = find_from(
+                next_node,
+                method,
+                path,
+                current_index,
+                params,
+                default_param_pattern,
+            )
+        {
+            return Some(found);
+        }
         return handle_terminal(node, method, params);
     }
 
     let (segment, next_index) = split_segment(path, current_index);
 
     if let Some(next_node) = node.static_children.get(segment)
-        && let Some(found) = find_from(next_node, method, path, next_index, params)
+        && let Some(found) = find_from(
+            next_node,
+            method,
+            path,
+            next_index,
+            params,
+            default_param_pattern,
+        )
     {
         return Some(found);
     }
 
     for (pattern, child) in node.patterns.iter() {
-        if let Some(kvs) = match_segment(segment, segment, pattern) {
+        if let Some(kvs) = match_segment(segment, pattern, default_param_pattern) {
             let checkpoint = params.len();
             for (name, (offset, len)) in kvs.into_iter() {
                 let abs_offset = current_index + offset;
@@ -54,7 +84,14 @@ fn find_from(
                     params.push((name, (abs_offset, len)));
                 }
             }
-            if let Some(found) = find_from(child, method, path, next_index, params) {
+            if let Some(found) = find_from(
+                child,
+                method,
+                path,
+                next_index,
+                params,
+                default_param_pattern,
+            ) {
                 return Some(found);
             }
             params.truncate(checkpoint);

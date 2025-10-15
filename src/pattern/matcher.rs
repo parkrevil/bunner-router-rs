@@ -1,5 +1,6 @@
 use crate::radix::node::is_valid_segment_length;
 use memchr::{memchr, memmem};
+use regex::Regex;
 use smallvec::SmallVec;
 
 use super::{SegmentPart, SegmentPattern};
@@ -8,10 +9,13 @@ pub type ParamOffset = (usize, usize);
 pub type CapturedParam = (String, ParamOffset);
 pub type CaptureList = SmallVec<[CapturedParam; 4]>;
 
-#[tracing::instrument(level = "trace", skip(seg_l, pat), fields(seg=%seg, parts=pat.parts.len() as u64))]
-pub fn match_segment(seg: &str, seg_l: &str, pat: &SegmentPattern) -> Option<CaptureList> {
+#[tracing::instrument(level = "trace", skip(pat, default_pattern), fields(seg=%seg, parts=pat.parts.len() as u64))]
+pub fn match_segment(
+    seg: &str,
+    pat: &SegmentPattern,
+    default_pattern: &Regex,
+) -> Option<CaptureList> {
     let mut i = 0usize;
-    let mut i_l = 0usize;
     let bytes = seg.as_bytes();
     let mut out: CaptureList = SmallVec::new();
     let mut idx = 0usize;
@@ -19,16 +23,15 @@ pub fn match_segment(seg: &str, seg_l: &str, pat: &SegmentPattern) -> Option<Cap
     while idx < pat.parts.len() {
         match &pat.parts[idx] {
             SegmentPart::Literal(lit) => {
-                if i_l + lit.len() > seg_l.len() {
+                if i + lit.len() > seg.len() {
                     return None;
                 }
 
-                if &seg_l[i_l..i_l + lit.len()] != lit.as_str() {
+                if &seg[i..i + lit.len()] != lit.as_str() {
                     return None;
                 }
 
                 i += lit.len();
-                i_l += lit.len();
             }
             SegmentPart::Param { name } => {
                 let mut next_lit: Option<&str> = None;
@@ -45,13 +48,12 @@ pub fn match_segment(seg: &str, seg_l: &str, pat: &SegmentPattern) -> Option<Cap
                     if nl_str.len() == 1 {
                         let target = nl_str.as_bytes()[0];
 
-                        if let Some(pos) = memchr(target, &seg_l.as_bytes()[i_l..]) {
+                        if let Some(pos) = memchr(target, &seg.as_bytes()[i..]) {
                             end = i + pos;
                         } else {
                             return None;
                         }
-                    } else if let Some(rel) =
-                        memmem::find(&seg_l.as_bytes()[i_l..], nl_str.as_bytes())
+                    } else if let Some(rel) = memmem::find(&seg.as_bytes()[i..], nl_str.as_bytes())
                     {
                         end = i + rel;
                     } else {
@@ -70,10 +72,13 @@ pub fn match_segment(seg: &str, seg_l: &str, pat: &SegmentPattern) -> Option<Cap
                     return None;
                 }
 
-                out.push((name.clone(), (i, end - i)));
+                let capture = &seg[i..end];
+                if !default_pattern.is_match(capture) {
+                    return None;
+                }
 
+                out.push((name.clone(), (i, end - i)));
                 i = end;
-                i_l = end;
             }
         }
 

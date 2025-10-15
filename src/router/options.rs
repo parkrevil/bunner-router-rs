@@ -1,4 +1,5 @@
 use crate::enums::HttpMethod;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use thiserror::Error;
@@ -279,9 +280,20 @@ impl RouterConfig {
         if self.param_pattern_default.trim().is_empty() {
             return Err(RouterConfigError::EmptyParamPatternDefault);
         }
+        compile_param_pattern(&self.param_pattern_default).map_err(|err| {
+            RouterConfigError::InvalidParamPatternDefault {
+                pattern: self.param_pattern_default.clone(),
+                error: err.to_string(),
+            }
+        })?;
         self.parser.validate()?;
         self.route_defaults.validate()?;
         Ok(())
+    }
+
+    pub(crate) fn param_pattern_default_regex(&self) -> Regex {
+        compile_param_pattern(&self.param_pattern_default)
+            .expect("param_pattern_default validated during router config build")
     }
 }
 
@@ -369,6 +381,8 @@ pub enum RouterConfigError {
     MaxParamDepthInvalid { provided: usize },
     #[error("param_pattern_default cannot be empty")]
     EmptyParamPatternDefault,
+    #[error("param_pattern_default regex '{pattern}' is invalid: {error}")]
+    InvalidParamPatternDefault { pattern: String, error: String },
     #[error("route methods cannot be empty")]
     EmptyRouteMethods,
     #[error("route priority {value} is outside the supported range {min}..={max}")]
@@ -382,3 +396,7 @@ pub enum RouterConfigError {
 pub type RouterOptions = RouterConfig;
 pub type RouterOptionsBuilder = RouterConfigBuilder;
 pub type RouterOptionsError = RouterConfigError;
+
+fn compile_param_pattern(pattern: &str) -> Result<Regex, regex::Error> {
+    Regex::new(&format!("^(?:{})$", pattern))
+}

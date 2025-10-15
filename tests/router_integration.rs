@@ -143,6 +143,152 @@ fn router_normalizes_trailing_slashes() {
 }
 
 #[test]
+fn router_matches_case_insensitive_by_default() {
+    let router = Router::new(None);
+    let key = router
+        .add(HttpMethod::Get, "/Users/Profile")
+        .expect("route should register");
+    router.seal();
+
+    let (found_key, _) = router
+        .find(HttpMethod::Get, "/users/profile")
+        .expect("case-insensitive match should succeed");
+    assert_eq!(found_key, key);
+}
+
+#[test]
+fn router_respects_case_sensitive_option() {
+    let options = RouterOptions::builder()
+        .case_sensitive(true)
+        .build()
+        .expect("options should build");
+    let router = Router::new(Some(options));
+
+    let key = router
+        .add(HttpMethod::Get, "/Case/Sensitive")
+        .expect("route should register");
+    router.seal();
+
+    let (found_key, _) = router
+        .find(HttpMethod::Get, "/Case/Sensitive")
+        .expect("exact-case match should succeed");
+    assert_eq!(found_key, key);
+
+    let err = router.find(HttpMethod::Get, "/case/sensitive");
+    match expect_readonly_error(err) {
+        ReadOnlyError::RouteNotFound { method, path } => {
+            assert_eq!(method, HttpMethod::Get);
+            assert_eq!(path, "/case/sensitive");
+        }
+        other => panic!("unexpected readonly error: {other:?}"),
+    }
+}
+
+#[test]
+fn router_decodes_percent_encoded_paths_when_enabled() {
+    let options = RouterOptions::builder()
+        .decode_uri(true)
+        .build()
+        .expect("options should build");
+    let router = Router::new(Some(options));
+
+    let key = router
+        .add(HttpMethod::Get, "/decode/%41")
+        .expect("route should register with decoded path");
+    router.seal();
+
+    let (found_key_encoded, _) = router
+        .find(HttpMethod::Get, "/decode/%41")
+        .expect("encoded lookup should decode");
+    assert_eq!(found_key_encoded, key);
+
+    let (found_key_plain, _) = router
+        .find(HttpMethod::Get, "/decode/A")
+        .expect("plain lookup should match decoded route");
+    assert_eq!(found_key_plain, key);
+}
+
+#[test]
+fn router_rejects_invalid_percent_encoding_when_decoding() {
+    let options = RouterOptions::builder()
+        .decode_uri(true)
+        .build()
+        .expect("options should build");
+    let router = Router::new(Some(options));
+
+    match expect_path_error(router.add(HttpMethod::Get, "/bad/%4G")) {
+        PathError::InvalidPercentEncoding { index, .. } => assert_eq!(index, 5),
+        other => panic!("unexpected path error: {other:?}"),
+    }
+}
+
+#[test]
+fn router_respects_strict_trailing_slash_option() {
+    let options = RouterOptions::builder()
+        .strict_trailing_slash(true)
+        .build()
+        .expect("options should build");
+    let router = Router::new(Some(options));
+
+    let key = router
+        .add(HttpMethod::Get, "/strict/path/")
+        .expect("route with trailing slash should register");
+    router.seal();
+
+    let (found_key, _) = router
+        .find(HttpMethod::Get, "/strict/path/")
+        .expect("matching trailing slash should succeed");
+    assert_eq!(found_key, key);
+
+    let err = router.find(HttpMethod::Get, "/strict/path");
+    match expect_readonly_error(err) {
+        ReadOnlyError::RouteNotFound { method, path } => {
+            assert_eq!(method, HttpMethod::Get);
+            assert_eq!(path, "/strict/path");
+        }
+        other => panic!("unexpected readonly error: {other:?}"),
+    }
+}
+
+#[test]
+fn router_preserves_duplicate_slashes_when_allowed() {
+    let options = RouterOptions::builder()
+        .allow_duplicate_slash(true)
+        .strict_trailing_slash(true)
+        .build()
+        .expect("options should build");
+    let router = Router::new(Some(options));
+
+    let key = router
+        .add(HttpMethod::Get, "/dupe//path/")
+        .expect("route with duplicate slash should register");
+    router.seal();
+
+    let (found_key, _) = router
+        .find(HttpMethod::Get, "/dupe//path/")
+        .expect("matching duplicate slashes should succeed");
+    assert_eq!(found_key, key);
+
+    let err_single = router.find(HttpMethod::Get, "/dupe/path/");
+    match expect_readonly_error(err_single) {
+        ReadOnlyError::RouteNotFound { method, path } => {
+            assert_eq!(method, HttpMethod::Get);
+            assert_eq!(path, "/dupe/path/");
+        }
+        other => panic!("unexpected readonly error: {other:?}"),
+    }
+
+    let err_trailing = router.find(HttpMethod::Get, "/dupe//path");
+    match expect_readonly_error(err_trailing) {
+        ReadOnlyError::RouteNotFound { method, path } => {
+            assert_eq!(method, HttpMethod::Get);
+            assert_eq!(path, "/dupe//path");
+        }
+        other => panic!("unexpected readonly error: {other:?}"),
+    }
+}
+
+#[test]
 fn router_supports_wildcard_segments() {
     let router = Router::new(None);
     let key = router
@@ -479,4 +625,121 @@ fn parser_options_builder_detects_duplicate_escape_chars() {
         err,
         RouterOptionsError::DuplicateEscapeChar { ch: '\\' }
     ));
+}
+
+#[test]
+fn router_param_pattern_default_enforces_constraint() {
+    let options = RouterOptions::builder()
+        .param_pattern_default("\\d+")
+        .build()
+        .expect("options should build with numeric param pattern");
+    let router = Router::new(Some(options));
+
+    router
+        .add(HttpMethod::Get, "/users/:id")
+        .expect("route should register");
+    router.seal();
+
+    let (found_key, params) = router
+        .find(HttpMethod::Get, "/users/12345")
+        .expect("numeric id should match default pattern");
+    assert_eq!(found_key, 0);
+    assert_eq!(params.len(), 1);
+    assert_eq!(params[0].0, "id");
+
+    let err = router.find(HttpMethod::Get, "/users/abc");
+    match expect_readonly_error(err) {
+        ReadOnlyError::RouteNotFound { method, path } => {
+            assert_eq!(method, HttpMethod::Get);
+            assert_eq!(path, "/users/abc");
+        }
+        other => panic!("unexpected readonly error: {other:?}"),
+    }
+}
+
+#[test]
+fn router_options_builder_rejects_invalid_param_pattern() {
+    let err = RouterOptions::builder()
+        .param_pattern_default("[")
+        .build()
+        .expect_err("invalid regex should be rejected");
+
+    match err {
+        RouterOptionsError::InvalidParamPatternDefault { pattern, .. } => {
+            assert_eq!(pattern, "[");
+        }
+        other => panic!("unexpected error: {other:?}"),
+    }
+}
+
+#[test]
+fn router_cache_tracks_hits_and_misses() {
+    let router = Router::new(None);
+    router
+        .add(HttpMethod::Get, "/cached")
+        .expect("route should register");
+    router.seal();
+
+    let readonly = router
+        .get_readonly()
+        .expect("readonly snapshot should be available");
+
+    assert_eq!(readonly.cache_metrics(), Some((0, 0)));
+
+    let (first_key, first_params) = router
+        .find(HttpMethod::Get, "/cached")
+        .expect("first lookup should succeed");
+    assert!(first_params.is_empty());
+    assert_eq!(first_key, 0);
+
+    let (hits_after_first, misses_after_first) = readonly
+        .cache_metrics()
+        .expect("metrics should be available");
+    assert_eq!(hits_after_first, 0);
+    assert_eq!(misses_after_first, 1);
+
+    let (second_key, second_params) = router
+        .find(HttpMethod::Get, "/cached")
+        .expect("second lookup should use cache");
+    assert!(second_params.is_empty());
+    assert_eq!(second_key, first_key);
+
+    let (hits_after_second, misses_after_second) = readonly
+        .cache_metrics()
+        .expect("metrics should remain available");
+    assert_eq!(hits_after_second, 1);
+    assert_eq!(misses_after_second, 1);
+}
+
+#[test]
+fn router_cache_can_be_disabled() {
+    let options = RouterOptions::builder()
+        .cache_routes(false)
+        .build()
+        .expect("options should build with cache disabled");
+    let router = Router::new(Some(options));
+    router
+        .add(HttpMethod::Get, "/nocache")
+        .expect("route should register");
+    router.seal();
+
+    let readonly = router
+        .get_readonly()
+        .expect("readonly snapshot should be available");
+
+    assert!(readonly.cache_metrics().is_none());
+
+    let (key_one, params_one) = router
+        .find(HttpMethod::Get, "/nocache")
+        .expect("first lookup should succeed without cache");
+    assert!(params_one.is_empty());
+    assert_eq!(key_one, 0);
+
+    let (key_two, params_two) = router
+        .find(HttpMethod::Get, "/nocache")
+        .expect("second lookup should also succeed");
+    assert!(params_two.is_empty());
+    assert_eq!(key_two, key_one);
+
+    assert!(readonly.cache_metrics().is_none());
 }

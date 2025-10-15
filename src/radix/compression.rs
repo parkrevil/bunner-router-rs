@@ -33,10 +33,21 @@ fn compress_node(n: &mut RadixTreeNode) {
         if n.static_children.len() != 1 {
             return;
         }
+        if n.static_children
+            .iter()
+            .next()
+            .map(|(k, _)| k.is_empty())
+            .unwrap_or(false)
+        {
+            return;
+        }
         let (k, c) = n.static_children.drain().next().unwrap();
         (k.to_string(), c)
     } else if !n.static_keys.is_empty() {
         if n.static_keys.len() != 1 {
+            return;
+        }
+        if n.static_keys.first().map(|k| k.is_empty()).unwrap_or(false) {
             return;
         }
         let k = n.static_keys.pop().unwrap();
@@ -51,6 +62,15 @@ fn compress_node(n: &mut RadixTreeNode) {
             child.routes.iter().any(|k| *k != 0) || child.wildcard_routes.iter().any(|k| *k != 0);
         if child.patterns.is_empty() && !terminal {
             if !child.static_children.is_empty() && child.static_children.len() == 1 {
+                if child
+                    .static_children
+                    .iter()
+                    .next()
+                    .map(|(k, _)| k.is_empty())
+                    .unwrap_or(false)
+                {
+                    break;
+                }
                 let (k2, c2) = child.static_children.drain().next().unwrap();
                 edge.push('/');
                 edge.push_str(&k2);
@@ -58,6 +78,14 @@ fn compress_node(n: &mut RadixTreeNode) {
                 continue;
             }
             if !child.static_keys.is_empty() && child.static_keys.len() == 1 {
+                if child
+                    .static_keys
+                    .first()
+                    .map(|k| k.is_empty())
+                    .unwrap_or(false)
+                {
+                    break;
+                }
                 let k2 = child.static_keys.pop().unwrap();
                 let c2 = child.static_vals.pop().unwrap();
                 edge.push('/');

@@ -16,6 +16,8 @@ pub enum PathError {
     },
     #[error("path '{input}' normalizes to invalid parent traversal '{normalized}'")]
     InvalidParentTraversal { input: String, normalized: String },
+    #[error("path '{input}' contains invalid percent-encoding at byte index {index}")]
+    InvalidPercentEncoding { input: String, index: usize },
     #[error("route path syntax invalid after normalization of '{input}' to '{normalized}'")]
     InvalidAfterNormalization { input: String, normalized: String },
 }

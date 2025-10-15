@@ -1,3 +1,4 @@
+mod cache;
 pub mod converter;
 mod error;
 pub mod snapshot;

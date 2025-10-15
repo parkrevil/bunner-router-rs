@@ -4,8 +4,9 @@ use hashbrown::HashSet as FastHashSet;
 
 use super::{RadixError, RadixResult};
 use crate::enums::HttpMethod;
-use crate::pattern::{SegmentPart, SegmentPattern};
-use crate::router::RouterOptions;
+use crate::pattern::SegmentPattern;
+use crate::radix::insert::{first_non_slash_byte, infer_static_guess, preprocess_and_parse};
+use crate::router::{Preprocessor, RouterOptions};
 use crate::tools::Interner;
 
 pub const HTTP_METHOD_COUNT: usize = 7;
@@ -15,7 +16,6 @@ pub const MAX_ROUTES: u16 = 65_535;
 
 pub(crate) const STATIC_MAP_THRESHOLD: usize = 50;
 
-type IndexedEntry = (usize, HttpMethod, String, u8, usize, bool);
 type ParsedEntry = (
     usize,
     HttpMethod,
@@ -30,6 +30,7 @@ type ParsedEntry = (
 pub struct RadixTree {
     pub(crate) root_node: super::node::RadixTreeNode,
     pub(crate) options: RouterOptions,
+    pub(crate) preprocessor: Preprocessor,
     pub(crate) arena: Bump,
     pub(crate) interner: Interner,
     pub(crate) method_first_byte_bitmaps: [[u64; 4]; HTTP_METHOD_COUNT],
@@ -47,9 +48,11 @@ impl RadixTree {
         let enable_root_level_pruning = configuration.tuning.enable_root_level_pruning;
         let enable_static_route_full_mapping =
             configuration.tuning.enable_static_route_full_mapping;
+        let preprocessor = Preprocessor::new(configuration.clone());
         Self {
             root_node: super::node::RadixTreeNode::default(),
             options: configuration,
+            preprocessor,
             arena: Bump::with_capacity(128 * 1024),
             interner: Interner::new(),
             method_first_byte_bitmaps: [[0; 4]; HTTP_METHOD_COUNT],
@@ -78,24 +81,16 @@ impl RadixTree {
             });
         }
 
-        // Phase A: parallel preprocess (normalize/parse) with light metadata
-        let indexed: Vec<IndexedEntry> = entries
+        // Phase A: preprocess (normalize/parse) with light metadata
+        let enumerated: Vec<(usize, HttpMethod, String)> = entries
             .into_iter()
             .enumerate()
-            .map(|(i, (m, p))| {
-                let bs = p.as_bytes();
-                let mut j = 0usize;
-                while j < bs.len() && bs[j] == b'/' {
-                    j += 1;
-                }
-                let head = if j < bs.len() { bs[j] } else { 0 };
-                let is_static_guess = !p.contains(':') && !p.contains("/*") && !p.ends_with('*');
-                (i, m, p.to_string(), head, bs.len(), is_static_guess)
-            })
+            .map(|(idx, (method, path))| (idx, method, path))
             .collect();
 
-        let total = indexed.len();
+        let total = enumerated.len();
         let mut pre: Vec<ParsedEntry> = Vec::with_capacity(total);
+        let preprocessor = self.preprocessor.clone();
 
         if total > 1 {
             use std::sync::mpsc;
@@ -107,27 +102,23 @@ impl RadixTree {
                 .unwrap_or(1)
                 .min(total);
             let chunk_size = total.div_ceil(workers);
-            let chunk_refs: Vec<&[IndexedEntry]> = indexed.chunks(chunk_size).collect();
+            let chunk_refs: Vec<&[(usize, HttpMethod, String)]> =
+                enumerated.chunks(chunk_size).collect();
             let mut handles = Vec::with_capacity(chunk_refs.len());
 
             for chunk in chunk_refs.into_iter() {
                 let txc = tx.clone();
-                let local: Vec<IndexedEntry> = chunk.to_vec();
+                let local: Vec<(usize, HttpMethod, String)> = chunk.to_vec();
+                let worker_preprocessor = preprocessor.clone();
 
                 handles.push(thread::spawn(move || {
-                    for (idx, method, path, head, plen, is_static) in local.into_iter() {
-                        let parsed = crate::radix::insert::prepare_path_segments_standalone(&path);
-                        match parsed {
-                            Ok(segs) => {
-                                let mut lits: Vec<String> = Vec::new();
-                                for pat in segs.iter() {
-                                    for part in pat.parts.iter() {
-                                        if let SegmentPart::Literal(l) = part {
-                                            lits.push(l.clone());
-                                        }
-                                    }
-                                }
-                                // ignore send error if receiver dropped
+                    for (idx, method, path) in local.into_iter() {
+                        match preprocess_and_parse(&path, &worker_preprocessor) {
+                            Ok((outcome, segs, lits)) => {
+                                let normalized = outcome.normalized();
+                                let head = first_non_slash_byte(normalized);
+                                let plen = normalized.len();
+                                let is_static = infer_static_guess(normalized);
                                 let _ =
                                     txc.send(Ok((idx, method, segs, head, plen, is_static, lits)));
                             }
@@ -162,16 +153,12 @@ impl RadixTree {
             }
         } else {
             // fast path: single item
-            for (idx, method, path, head, plen, is_static) in indexed.into_iter() {
-                let segs = crate::radix::insert::prepare_path_segments_standalone(&path)?;
-                let mut lits: Vec<String> = Vec::new();
-                for pat in segs.iter() {
-                    for part in pat.parts.iter() {
-                        if let SegmentPart::Literal(l) = part {
-                            lits.push(l.clone());
-                        }
-                    }
-                }
+            for (idx, method, path) in enumerated.into_iter() {
+                let (outcome, segs, lits) = preprocess_and_parse(&path, &preprocessor)?;
+                let normalized = outcome.normalized();
+                let head = first_non_slash_byte(normalized);
+                let plen = normalized.len();
+                let is_static = infer_static_guess(normalized);
                 pre.push((idx, method, segs, head, plen, is_static, lits));
             }
         }

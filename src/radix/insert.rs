@@ -2,12 +2,13 @@ use super::{
     MAX_ROUTES, RadixTree, RadixTreeNode, create_node_box_from_arena_pointer, node::PatternMeta,
 };
 use crate::enums::HttpMethod;
-use crate::path::{PathError, normalize_and_validate_path};
+use crate::path::PathError;
 use crate::pattern::{
     SegmentPart, SegmentPattern, parse_segment, pattern_compatible_policy, pattern_is_pure_static,
     pattern_score,
 };
 use crate::radix::{RadixError, RadixResult};
+use crate::router::{PreprocessOutcome, Preprocessor, RouterOptions};
 use crate::tools::Interner;
 use hashbrown::HashSet;
 use std::sync::atomic::AtomicU16;
@@ -23,12 +24,7 @@ impl RadixTree {
         }
         self.root_node.set_dirty(true);
 
-        if path == "/" {
-            let key = assign_route_key(&mut self.root_node, method, &self.next_route_key)?;
-            return Ok(key);
-        }
-
-        let parsed_segments = self.prepare_path_segments(path)?;
+        let (_outcome, parsed_segments, _) = preprocess_and_parse(path, &self.preprocessor)?;
         self.insert_parsed(method, parsed_segments)
     }
 
@@ -162,10 +158,6 @@ impl RadixTree {
 
         let key = assign_route_key_preassigned(current, method, assigned_key)?;
         Ok(key)
-    }
-
-    pub(super) fn prepare_path_segments(&self, path: &str) -> RadixResult<Vec<SegmentPattern>> {
-        prepare_path_segments_standalone(path)
     }
 }
 
@@ -345,19 +337,57 @@ impl SegmentPart {
     }
 }
 
-// Thread-safe standalone parser for bulk preprocess
-pub(super) fn prepare_path_segments_standalone(path: &str) -> RadixResult<Vec<SegmentPattern>> {
-    // Use the unified path validation function
-    let norm = normalize_and_validate_path(path)?;
-    if norm == "/" {
+pub(super) fn preprocess_and_parse(
+    path: &str,
+    preprocessor: &Preprocessor,
+) -> RadixResult<(PreprocessOutcome, Vec<SegmentPattern>, Vec<String>)> {
+    let outcome = preprocessor.apply(path)?;
+    let segments = parse_segments(&outcome, preprocessor.config())?;
+    let literals = collect_literals(&segments);
+    Ok((outcome, segments, literals))
+}
+
+fn parse_segments(
+    outcome: &PreprocessOutcome,
+    config: &RouterOptions,
+) -> RadixResult<Vec<SegmentPattern>> {
+    let normalized = outcome.normalized();
+    if normalized == "/" {
         return Ok(Vec::new());
     }
 
-    let segments: Vec<&str> = norm.split('/').filter(|s| !s.is_empty()).collect();
+    let parts: Vec<&str> = normalized.split('/').collect();
+    let total_parts = parts.len();
+    let leading_slash = normalized.starts_with('/');
+
+    let mut segments: Vec<&str> = Vec::new();
+    for (idx, part) in parts.into_iter().enumerate() {
+        let is_first = idx == 0;
+        let is_last = idx == total_parts - 1;
+
+        if is_first && leading_slash && part.is_empty() {
+            continue;
+        }
+
+        if part.is_empty() {
+            let keep = if is_last {
+                config.strict_trailing_slash
+            } else {
+                config.allow_duplicate_slash
+            };
+
+            if !keep {
+                continue;
+            }
+        }
+
+        segments.push(part);
+    }
+
     if segments.is_empty() {
         return Err(PathError::InvalidAfterNormalization {
-            input: path.to_string(),
-            normalized: norm,
+            input: outcome.original().to_string(),
+            normalized: normalized.to_string(),
         }
         .into());
     }
@@ -382,7 +412,7 @@ pub(super) fn prepare_path_segments_standalone(path: &str) -> RadixResult<Vec<Se
         if !PatternMeta::is_valid_length(min_len, last_lit_len) {
             return Err(RadixError::PatternLengthExceeded {
                 segment: seg.to_string(),
-                path: path.to_string(),
+                path: outcome.original().to_string(),
                 min_length: min_len,
                 last_literal_length: last_lit_len,
             });
@@ -394,7 +424,7 @@ pub(super) fn prepare_path_segments_standalone(path: &str) -> RadixResult<Vec<Se
                 if !seen_params.insert(name_owned.clone()) {
                     return Err(RadixError::DuplicateParamName {
                         param: name_owned,
-                        path: path.to_string(),
+                        path: outcome.original().to_string(),
                     });
                 }
             }
@@ -402,4 +432,28 @@ pub(super) fn prepare_path_segments_standalone(path: &str) -> RadixResult<Vec<Se
         parsed_segments.push(pat);
     }
     Ok(parsed_segments)
+}
+
+fn collect_literals(segments: &[SegmentPattern]) -> Vec<String> {
+    let mut literals = Vec::new();
+    for pat in segments.iter() {
+        for part in pat.parts.iter() {
+            if let SegmentPart::Literal(l) = part {
+                literals.push(l.clone());
+            }
+        }
+    }
+    literals
+}
+
+pub(super) fn first_non_slash_byte(path: &str) -> u8 {
+    path.as_bytes()
+        .iter()
+        .copied()
+        .find(|b| *b != b'/')
+        .unwrap_or(0)
+}
+
+pub(super) fn infer_static_guess(path: &str) -> bool {
+    !path.contains(':') && !path.contains("/*") && !path.ends_with('*')
 }
