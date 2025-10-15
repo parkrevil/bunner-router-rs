@@ -8,17 +8,12 @@ use crate::pattern::{
 };
 use crate::radix::{RadixError, RadixResult};
 use crate::tools::Interner;
-use crate::types::{HttpMethod, WorkerId};
+use crate::enums::HttpMethod;
 use hashbrown::HashSet;
 use std::sync::atomic::AtomicU16;
 
 impl RadixTree {
-    pub fn insert(
-        &mut self,
-        worker_id: WorkerId,
-        method: HttpMethod,
-        path: &str,
-    ) -> RadixResult<u16> {
+    pub fn insert(&mut self, method: HttpMethod, path: &str) -> RadixResult<u16> {
         tracing::event!(tracing::Level::TRACE, operation="insert", method=?method, path=%path);
         if self.root_node.is_sealed() {
             return Err(RadixError::TreeSealed {
@@ -29,23 +24,16 @@ impl RadixTree {
         self.root_node.set_dirty(true);
 
         if path == "/" {
-            let key = assign_route_key(
-                &mut self.route_worker_side_table,
-                &mut self.root_node,
-                method,
-                &self.next_route_key,
-                worker_id,
-            )?;
+            let key = assign_route_key(&mut self.root_node, method, &self.next_route_key)?;
             return Ok(key);
         }
 
         let parsed_segments = self.prepare_path_segments(path)?;
-        self.insert_parsed(worker_id, method, parsed_segments)
+        self.insert_parsed(method, parsed_segments)
     }
 
     pub(super) fn insert_parsed(
         &mut self,
-        worker_id: WorkerId,
         method: HttpMethod,
         parsed_segments: Vec<SegmentPattern>,
     ) -> RadixResult<u16> {
@@ -67,13 +55,11 @@ impl RadixTree {
                 matches!(pat.parts.as_slice(), [SegmentPart::Literal(s)] if s.as_str() == "*");
             if is_wildcard {
                 let key = handle_wildcard_insert(
-                    &mut self.route_worker_side_table,
                     current,
                     method,
                     i,
                     parsed_segments.len(),
                     &self.next_route_key,
-                    worker_id,
                 )?;
                 return Ok(key);
             }
@@ -110,19 +96,12 @@ impl RadixTree {
             current.set_dirty(true);
         }
 
-        let key = assign_route_key(
-            &mut self.route_worker_side_table,
-            current,
-            method,
-            &self.next_route_key,
-            worker_id,
-        )?;
+        let key = assign_route_key(current, method, &self.next_route_key)?;
         Ok(key)
     }
 
     pub(super) fn insert_parsed_preassigned(
         &mut self,
-        worker_id: WorkerId,
         method: HttpMethod,
         parsed_segments: Vec<SegmentPattern>,
         assigned_key: u16,
@@ -144,13 +123,11 @@ impl RadixTree {
                 matches!(pat.parts.as_slice(), [SegmentPart::Literal(s)] if s.as_str() == "*");
             if is_wildcard {
                 return handle_wildcard_insert_preassigned(
-                    &mut self.route_worker_side_table,
                     current,
                     method,
                     i,
                     parsed_segments.len(),
                     assigned_key,
-                    worker_id,
                 );
             }
 
@@ -183,13 +160,7 @@ impl RadixTree {
             current.set_dirty(true);
         }
 
-        let key = assign_route_key_preassigned(
-            &mut self.route_worker_side_table,
-            current,
-            method,
-            assigned_key,
-            worker_id,
-        )?;
+        let key = assign_route_key_preassigned(current, method, assigned_key)?;
         Ok(key)
     }
 
@@ -264,13 +235,11 @@ fn find_or_create_pattern_child<'a>(
 }
 
 fn handle_wildcard_insert(
-    side_table: &mut Vec<Option<u32>>,
     node: &mut RadixTreeNode,
     method: HttpMethod,
     index: usize,
     total_segments: usize,
     next_route_key: &AtomicU16,
-    worker_id: WorkerId,
 ) -> RadixResult<u16> {
     if index != total_segments - 1 {
         return Err(RadixError::WildcardMustBeTerminal {
@@ -281,17 +250,13 @@ fn handle_wildcard_insert(
     let method_idx = method as usize;
     if node.wildcard_routes[method_idx] != 0 {
         let existing_key = node.wildcard_routes[method_idx] - 1;
-        if side_table.get(existing_key as usize).and_then(|v| *v) == Some(worker_id) {
-            return Err(RadixError::DuplicateWildcardRoute {
-                worker_id,
-                existing_key,
-            });
-        }
-        return Ok(existing_key);
+        return Err(RadixError::DuplicateWildcardRoute {
+            method,
+            existing_key,
+        });
     }
     let key = next_route_key.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     node.wildcard_routes[method_idx] = key + 1;
-    record_route_worker_raw(side_table, key, worker_id);
 
     node.set_dirty(true);
 
@@ -299,13 +264,11 @@ fn handle_wildcard_insert(
 }
 
 fn handle_wildcard_insert_preassigned(
-    side_table: &mut Vec<Option<u32>>,
     node: &mut RadixTreeNode,
     method: HttpMethod,
     index: usize,
     total_segments: usize,
     assigned_key: u16,
-    worker_id: WorkerId,
 ) -> RadixResult<u16> {
     if index != total_segments - 1 {
         return Err(RadixError::WildcardMustBeTerminal {
@@ -316,37 +279,28 @@ fn handle_wildcard_insert_preassigned(
     let method_idx = method as usize;
     if node.wildcard_routes[method_idx] != 0 {
         let existing_key = node.wildcard_routes[method_idx] - 1;
-        if side_table.get(existing_key as usize).and_then(|v| *v) == Some(worker_id) {
-            return Err(RadixError::DuplicateWildcardRoute {
-                worker_id,
-                existing_key,
-            });
-        }
-        return Ok(existing_key);
+        return Err(RadixError::DuplicateWildcardRoute {
+            method,
+            existing_key,
+        });
     }
     node.wildcard_routes[method_idx] = assigned_key + 1;
-    record_route_worker_raw(side_table, assigned_key, worker_id);
     node.set_dirty(true);
     Ok(assigned_key)
 }
 
 fn assign_route_key(
-    side_table: &mut Vec<Option<u32>>,
     node: &mut RadixTreeNode,
     method: HttpMethod,
     next_route_key: &AtomicU16,
-    worker_id: WorkerId,
 ) -> RadixResult<u16> {
     let method_idx = method as usize;
     if node.routes[method_idx] != 0 {
         let existing_key = node.routes[method_idx] - 1;
-        if side_table.get(existing_key as usize).and_then(|v| *v) == Some(worker_id) {
-            return Err(RadixError::DuplicateRoute {
-                worker_id,
-                existing_key,
-            });
-        }
-        return Ok(existing_key);
+        return Err(RadixError::DuplicateRoute {
+            method,
+            existing_key,
+        });
     }
     let current_key = next_route_key.load(std::sync::atomic::Ordering::Relaxed);
     if current_key == MAX_ROUTES {
@@ -358,7 +312,6 @@ fn assign_route_key(
     }
     let key = next_route_key.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     node.routes[method_idx] = key + 1;
-    record_route_worker_raw(side_table, key, worker_id);
 
     let current_mask = node.method_mask();
     node.set_method_mask(current_mask | (1 << method_idx));
@@ -368,46 +321,21 @@ fn assign_route_key(
 }
 
 fn assign_route_key_preassigned(
-    side_table: &mut Vec<Option<u32>>,
     node: &mut RadixTreeNode,
     method: HttpMethod,
     assigned_key: u16,
-    worker_id: WorkerId,
 ) -> RadixResult<u16> {
     let method_idx = method as usize;
     if node.routes[method_idx] != 0 {
         let existing_key = node.routes[method_idx] - 1;
-        if side_table.get(existing_key as usize).and_then(|v| *v) == Some(worker_id) {
-            return Err(RadixError::DuplicateRoute {
-                worker_id,
-                existing_key,
-            });
-        }
-        return Ok(existing_key);
+        return Err(RadixError::DuplicateRoute {
+            method,
+            existing_key,
+        });
     }
     node.routes[method_idx] = assigned_key + 1;
-    record_route_worker_raw(side_table, assigned_key, worker_id);
     node.set_dirty(true);
     Ok(assigned_key)
-}
-
-#[inline(always)]
-fn record_route_worker_raw(
-    side_table: &mut Vec<Option<u32>>,
-    route_key: u16,
-    worker_id: u32,
-) -> bool {
-    let idx = route_key as usize;
-    let needed = idx + 1;
-    if side_table.len() < needed {
-        side_table.resize(needed, None);
-    }
-    if side_table[idx].is_none() {
-        side_table[idx] = Some(worker_id);
-        true
-    } else {
-        false
-    }
 }
 
 // Helper for SegmentPart

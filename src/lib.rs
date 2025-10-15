@@ -6,7 +6,9 @@ pub mod readonly;
 pub mod registry;
 pub mod router;
 pub mod tools;
+pub mod enums;
 pub mod types;
 
 pub use router::{Router, RouterError, RouterOptions, RouterReadOnly, RouterResult};
-pub use types::{HttpMethod, RouteMatch, WorkerId};
+pub use enums::{HttpMethod};
+pub use types::{RouteMatch};

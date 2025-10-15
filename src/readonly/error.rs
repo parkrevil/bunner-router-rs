@@ -1,5 +1,5 @@
 use crate::path::PathError;
-use crate::types::HttpMethod;
+use crate::enums::HttpMethod;
 use thiserror::Error;
 
 #[derive(Debug, Error)]

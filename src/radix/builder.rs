@@ -19,12 +19,6 @@ pub(super) fn finalize(tree: &mut RadixTree) {
         rebuild_pattern_index(node);
     });
 
-    // Clear worker id metadata if present. After sealing there will be no re-registrations,
-    // Drop the side-table tracking initial registrant worker ids to reclaim heap memory.
-    // This actually frees memory; per-node inlined fields would not.
-    tree.route_worker_side_table.clear();
-    tree.route_worker_side_table.shrink_to_fit();
-
     // --- Automatic Optimization Logic ---
     if tree.options.enable_automatic_optimization {
         // 1. Auto-enable root pruning

@@ -6,7 +6,7 @@ use super::{RadixError, RadixResult};
 use crate::pattern::{SegmentPart, SegmentPattern};
 use crate::router::RouterOptions;
 use crate::tools::Interner;
-use crate::types::{HttpMethod, WorkerId};
+use crate::enums::HttpMethod;
 
 pub const HTTP_METHOD_COUNT: usize = 7;
 
@@ -40,9 +40,6 @@ pub struct RadixTree {
     pub enable_root_level_pruning: bool,
     pub enable_static_route_full_mapping: bool,
     pub(crate) next_route_key: std::sync::atomic::AtomicU16,
-    // Side-table mapping route key index -> initial registrant worker id.
-    // Kept here so we can drop it at finalize() to reclaim heap memory.
-    pub(crate) route_worker_side_table: Vec<Option<u32>>,
 }
 
 impl RadixTree {
@@ -60,7 +57,6 @@ impl RadixTree {
             enable_root_level_pruning: configuration.enable_root_level_pruning,
             enable_static_route_full_mapping: configuration.enable_static_route_full_mapping,
             next_route_key: std::sync::atomic::AtomicU16::new(0),
-            route_worker_side_table: Vec::new(),
         }
     }
 
@@ -68,7 +64,7 @@ impl RadixTree {
         super::builder::finalize(self);
     }
 
-    pub fn insert_bulk<I>(&mut self, worker_id: WorkerId, entries: I) -> RadixResult<Vec<u16>>
+    pub fn insert_bulk<I>(&mut self, entries: I) -> RadixResult<Vec<u16>>
     where
         I: IntoIterator<Item = (HttpMethod, String)>,
     {
@@ -214,12 +210,27 @@ impl RadixTree {
             self.next_route_key.fetch_add(n as u16, Ordering::Relaxed)
         };
         let mut out = vec![0u16; n];
+        let mut max_assigned_key: Option<u16> = None;
         for (idx, method, segs, _h, _l, _s, _lits) in pre.into_iter() {
             let assigned = base + (idx as u16) + 1; // stored keys are +1 encoded
             // pass decoded value to helper (helper will re-encode)
-            let route_key =
-                self.insert_parsed_preassigned(worker_id, method, segs, assigned - 1)?;
-            out[idx] = route_key;
+            match self.insert_parsed_preassigned(method, segs, assigned - 1) {
+                Ok(route_key) => {
+                    out[idx] = route_key;
+                    max_assigned_key = match max_assigned_key {
+                        Some(existing) => Some(existing.max(route_key)),
+                        None => Some(route_key),
+                    };
+                }
+                Err(err) => {
+                    use std::sync::atomic::Ordering;
+                    let new_next = max_assigned_key
+                        .map(|key| key.saturating_add(1))
+                        .unwrap_or(base);
+                    self.next_route_key.store(new_next, Ordering::Relaxed);
+                    return Err(err);
+                }
+            }
         }
         Ok(out)
     }

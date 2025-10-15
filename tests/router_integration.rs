@@ -68,7 +68,7 @@ fn expect_readonly_unavailable_error<T: std::fmt::Debug>(result: RouterResult<T>
 fn router_registers_and_finds_static_route() {
     let router = Router::new(None);
     let key = router
-        .add(1, HttpMethod::Get, "/hello")
+        .add(HttpMethod::Get, "/hello")
         .expect("static route should register");
     assert_eq!(key, 0);
 
@@ -85,10 +85,10 @@ fn router_registers_and_finds_static_route() {
 fn router_supports_multiple_methods_for_same_path() {
     let router = Router::new(None);
     let get_key = router
-        .add(1, HttpMethod::Get, "/status")
+        .add(HttpMethod::Get, "/status")
         .expect("GET route should register");
     let post_key = router
-        .add(1, HttpMethod::Post, "/status")
+        .add(HttpMethod::Post, "/status")
         .expect("POST route should register");
 
     assert_ne!(get_key, post_key);
@@ -110,7 +110,7 @@ fn router_supports_multiple_methods_for_same_path() {
 fn router_supports_path_parameters() {
     let router = Router::new(None);
     let key = router
-        .add(1, HttpMethod::Get, "/users/:id/profile")
+        .add(HttpMethod::Get, "/users/:id/profile")
         .expect("parameterized route should register");
 
     router.seal();
@@ -130,7 +130,7 @@ fn router_supports_path_parameters() {
 fn router_normalizes_trailing_slashes() {
     let router = Router::new(None);
     router
-        .add(1, HttpMethod::Get, "/posts/view")
+        .add(HttpMethod::Get, "/posts/view")
         .expect("route should register");
     router.seal();
 
@@ -145,7 +145,7 @@ fn router_normalizes_trailing_slashes() {
 fn router_supports_wildcard_segments() {
     let router = Router::new(None);
     let key = router
-        .add(1, HttpMethod::Get, "/files/*")
+        .add(HttpMethod::Get, "/files/*")
         .expect("wildcard route should register");
 
     router.seal();
@@ -166,7 +166,6 @@ fn router_add_bulk_registers_multiple_routes() {
     let router = Router::new(None);
     let keys = router
         .add_bulk(
-            1,
             vec![
                 (HttpMethod::Get, "/bulk/one".to_string()),
                 (HttpMethod::Get, "/bulk/two".to_string()),
@@ -194,7 +193,6 @@ fn router_add_bulk_registers_multiple_routes() {
 fn router_add_bulk_propagates_invalid_path_error() {
     let router = Router::new(None);
     let err = router.add_bulk(
-        1,
         vec![
             (HttpMethod::Get, "/valid".to_string()),
             (HttpMethod::Get, "/\tinvalid".to_string()),
@@ -208,44 +206,57 @@ fn router_add_bulk_propagates_invalid_path_error() {
 }
 
 #[test]
-fn router_rejects_duplicate_route_for_same_worker() {
+fn router_rejects_duplicate_route() {
     let router = Router::new(None);
-    router
-        .add(42, HttpMethod::Get, "/dup")
+    let first_key = router
+        .add(HttpMethod::Get, "/dup")
         .expect("first registration should succeed");
 
-    let err = router.add(42, HttpMethod::Get, "/dup");
+    let err = router.add(HttpMethod::Get, "/dup");
     match expect_radix_error(err) {
-        RadixError::DuplicateRoute { worker_id, .. } => assert_eq!(worker_id, 42),
+        RadixError::DuplicateRoute {
+            method,
+            existing_key,
+        } => {
+            assert_eq!(method, HttpMethod::Get);
+            assert_eq!(existing_key, first_key);
+        }
         other => panic!("unexpected radix error: {other:?}"),
     }
 }
 
 #[test]
-fn router_allows_duplicate_route_for_different_workers() {
+fn router_rejects_duplicate_wildcard_route() {
     let router = Router::new(None);
     let first_key = router
-        .add(1, HttpMethod::Get, "/shared")
-        .expect("first worker registration should succeed");
-    let second_key = router
-        .add(2, HttpMethod::Get, "/shared")
-        .expect("second worker should reuse existing route");
+        .add(HttpMethod::Get, "/wild/*")
+        .expect("wildcard registration should succeed");
 
-    assert_eq!(first_key, second_key);
+    let err = router.add(HttpMethod::Get, "/wild/*");
+    match expect_radix_error(err) {
+        RadixError::DuplicateWildcardRoute {
+            method,
+            existing_key,
+        } => {
+            assert_eq!(method, HttpMethod::Get);
+            assert_eq!(existing_key, first_key);
+        }
+        other => panic!("unexpected radix error: {other:?}"),
+    }
 }
 
 #[test]
 fn router_cannot_add_after_seal() {
     let router = Router::new(None);
     router
-        .add(1, HttpMethod::Get, "/once")
+        .add(HttpMethod::Get, "/once")
         .expect("initial add should succeed");
     router.seal();
 
-    let add_err = router.add(1, HttpMethod::Get, "/once-more");
+    let add_err = router.add(HttpMethod::Get, "/once-more");
     assert_eq!(expect_add_sealed_error(add_err), "/once-more".to_string());
 
-    let bulk_err = router.add_bulk(1, vec![(HttpMethod::Get, "/bulk-once".to_string())]);
+    let bulk_err = router.add_bulk(vec![(HttpMethod::Get, "/bulk-once".to_string())]);
     assert_eq!(expect_bulk_add_sealed_error(bulk_err), 1);
 }
 
@@ -253,7 +264,7 @@ fn router_cannot_add_after_seal() {
 fn router_find_before_seal_fails() {
     let router = Router::new(None);
     router
-        .add(1, HttpMethod::Get, "/pending")
+        .add(HttpMethod::Get, "/pending")
         .expect("initial add should succeed");
 
     let err = router.find(HttpMethod::Get, "/pending");
@@ -264,7 +275,7 @@ fn router_find_before_seal_fails() {
 fn router_get_readonly_requires_seal() {
     let router = Router::new(None);
     router
-        .add(1, HttpMethod::Get, "/readonly")
+        .add(HttpMethod::Get, "/readonly")
         .expect("should register");
 
     let err = router.get_readonly();
@@ -285,7 +296,7 @@ fn router_get_readonly_requires_seal() {
 fn router_reports_path_not_found() {
     let router = Router::new(None);
     router
-        .add(1, HttpMethod::Get, "/known")
+        .add(HttpMethod::Get, "/known")
         .expect("route should register");
     router.seal();
 
@@ -303,22 +314,22 @@ fn router_reports_path_not_found() {
 fn router_validates_empty_and_invalid_paths() {
     let router = Router::new(None);
     assert!(matches!(
-        expect_path_error(router.add(1, HttpMethod::Get, "")),
+        expect_path_error(router.add(HttpMethod::Get, "")),
         PathError::Empty
     ));
 
-    match expect_path_error(router.add(1, HttpMethod::Get, " /space")) {
+    match expect_path_error(router.add(HttpMethod::Get, " /space")) {
         PathError::ControlOrWhitespace { byte, .. } => assert_eq!(byte, b' '),
         other => panic!("unexpected path error: {other:?}"),
     }
 
     assert!(matches!(
-        expect_path_error(router.add(1, HttpMethod::Get, "/../escape")),
+        expect_path_error(router.add(HttpMethod::Get, "/../escape")),
         PathError::InvalidParentTraversal { .. }
     ));
 
     assert!(matches!(
-        expect_path_error(router.add(1, HttpMethod::Get, "/nonascii/å")),
+        expect_path_error(router.add(HttpMethod::Get, "/nonascii/å")),
         PathError::NonAscii { .. }
     ));
 }
@@ -326,11 +337,11 @@ fn router_validates_empty_and_invalid_paths() {
 #[test]
 fn router_rejects_invalid_param_names() {
     let router = Router::new(None);
-    match expect_pattern_error(router.add(1, HttpMethod::Get, "/:123bad")) {
+    match expect_pattern_error(router.add(HttpMethod::Get, "/:123bad")) {
         PatternError::ParameterInvalidStart { found, .. } => assert_eq!(found, '1'),
         other => panic!("unexpected pattern error: {other:?}"),
     }
-    match expect_pattern_error(router.add(1, HttpMethod::Get, "/foo:bar")) {
+    match expect_pattern_error(router.add(HttpMethod::Get, "/foo:bar")) {
         PatternError::MixedParameterLiteralSyntax { .. } => {}
         other => panic!("unexpected pattern error: {other:?}"),
     }
@@ -339,7 +350,7 @@ fn router_rejects_invalid_param_names() {
 #[test]
 fn router_rejects_duplicate_param_names_within_route() {
     let router = Router::new(None);
-    let err = router.add(1, HttpMethod::Get, "/users/:id/details/:id");
+    let err = router.add(HttpMethod::Get, "/users/:id/details/:id");
     match expect_radix_error(err) {
         RadixError::DuplicateParamName { param, .. } => assert_eq!(param, "id"),
         other => panic!("unexpected radix error: {other:?}"),
@@ -350,10 +361,10 @@ fn router_rejects_duplicate_param_names_within_route() {
 fn router_detects_param_name_conflicts_between_routes() {
     let router = Router::new(None);
     router
-        .add(1, HttpMethod::Get, "/users/:id/profile")
+        .add(HttpMethod::Get, "/users/:id/profile")
         .expect("first route should register");
 
-    let err = router.add(1, HttpMethod::Get, "/users/:name/profile");
+    let err = router.add(HttpMethod::Get, "/users/:name/profile");
     match expect_radix_error(err) {
         RadixError::ParamNameConflict { pattern } => {
             assert!(pattern.contains("name"), "unexpected pattern: {pattern}");
@@ -365,7 +376,7 @@ fn router_detects_param_name_conflicts_between_routes() {
 #[test]
 fn router_rejects_invalid_wildcard_position() {
     let router = Router::new(None);
-    let err = router.add(1, HttpMethod::Get, "/files/*/meta");
+    let err = router.add(HttpMethod::Get, "/files/*/meta");
     match expect_radix_error(err) {
         RadixError::WildcardMustBeTerminal {
             segment_index,
@@ -382,7 +393,7 @@ fn router_rejects_invalid_wildcard_position() {
 fn router_limits_segment_length() {
     let router = Router::new(None);
     let long_segment = format!("/{}", "a".repeat(260));
-    let err = router.add(1, HttpMethod::Get, &long_segment);
+    let err = router.add(HttpMethod::Get, &long_segment);
     match expect_radix_error(err) {
         RadixError::PatternLengthExceeded { segment, .. } => {
             assert_eq!(segment.len(), 260);
@@ -397,11 +408,11 @@ fn router_enforces_max_route_limit() {
     for i in 0..u16::MAX {
         let path = format!("/limit/{i}");
         router
-            .add(1, HttpMethod::Get, &path)
+            .add(HttpMethod::Get, &path)
             .unwrap_or_else(|e| panic!("unexpected failure at {}: {:?}", i, e));
     }
 
-    let err = router.add(1, HttpMethod::Get, "/limit/overflow");
+    let err = router.add(HttpMethod::Get, "/limit/overflow");
     match expect_radix_error(err) {
         RadixError::MaxRoutesExceeded { limit, .. } => assert_eq!(limit, u16::MAX),
         other => panic!("unexpected radix error: {other:?}"),
@@ -418,7 +429,7 @@ fn router_respects_custom_options() {
 
     let router = Router::new(Some(options));
     router
-        .add(1, HttpMethod::Get, "/options")
+        .add(HttpMethod::Get, "/options")
         .expect("route should register with custom options");
     router.seal();
 

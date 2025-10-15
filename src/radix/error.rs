@@ -1,5 +1,6 @@
 use crate::path::PathError;
 use crate::pattern::PatternError;
+use crate::enums::HttpMethod;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -14,10 +15,6 @@ pub enum RadixError {
         segment_index: usize,
         total_segments: usize,
     },
-    #[error("worker {worker_id} already registered wildcard route with key {existing_key}")]
-    DuplicateWildcardRoute { worker_id: u32, existing_key: u16 },
-    #[error("worker {worker_id} already registered route with key {existing_key}")]
-    DuplicateRoute { worker_id: u32, existing_key: u16 },
     #[error(
         "maximum number of routes exceeded: requested {requested:?}, current_next_key {current_next_key}, limit {limit}"
     )]
@@ -39,6 +36,16 @@ pub enum RadixError {
     },
     #[error("duplicate parameter name '{param}' in path '{path}'")]
     DuplicateParamName { param: String, path: String },
+    #[error("duplicate route for method {method:?} (existing key {existing_key})")]
+    DuplicateRoute {
+        method: HttpMethod,
+        existing_key: u16,
+    },
+    #[error("duplicate wildcard route for method {method:?} (existing key {existing_key})")]
+    DuplicateWildcardRoute {
+        method: HttpMethod,
+        existing_key: u16,
+    },
     #[error(transparent)]
     Path(#[from] PathError),
     #[error(transparent)]

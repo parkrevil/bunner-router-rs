@@ -2,7 +2,8 @@ use super::{RouterError, RouterResult};
 use crate::readonly::RouterReadOnly;
 use crate::registry::RouteRegistry;
 use crate::router::RouterOptions;
-use crate::types::{HttpMethod, RouteMatch, WorkerId};
+use crate::enums::{HttpMethod};
+use crate::types::{RouteMatch};
 use parking_lot::RwLock;
 use std::sync::Arc;
 use std::sync::OnceLock;
@@ -35,7 +36,7 @@ impl Router {
         }
     }
 
-    pub fn add(&self, worker_id: WorkerId, method: HttpMethod, path: &str) -> RouterResult<u16> {
+    pub fn add(&self, method: HttpMethod, path: &str) -> RouterResult<u16> {
         let mut guard = self.inner.write();
 
         if guard.readonly.get().is_some() {
@@ -44,24 +45,24 @@ impl Router {
             });
         }
 
-        let key = guard.registry.insert(worker_id, method, path)?;
+        let key = guard.registry.insert(method, path)?;
         Ok(key)
     }
 
-    pub fn add_bulk<I>(&self, worker_id: WorkerId, entries: I) -> RouterResult<Vec<u16>>
+    pub fn add_bulk<I>(&self, entries: I) -> RouterResult<Vec<u16>>
     where
         I: IntoIterator<Item = (HttpMethod, String)>,
     {
+        let entries_vec: Vec<(HttpMethod, String)> = entries.into_iter().collect();
         let mut guard = self.inner.write();
 
         if guard.readonly.get().is_some() {
-            let entries_vec: Vec<(HttpMethod, String)> = entries.into_iter().collect();
             return Err(RouterError::BulkAddWhileSealed {
                 count: entries_vec.len(),
             });
         }
 
-        let keys = guard.registry.insert_bulk(worker_id, entries)?;
+        let keys = guard.registry.insert_bulk(entries_vec)?;
         Ok(keys)
     }
 

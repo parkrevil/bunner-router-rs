@@ -3,7 +3,8 @@ use crate::path::normalize_and_validate_path;
 use crate::pattern::SegmentPattern;
 use crate::radix::{HTTP_METHOD_COUNT, RadixTree};
 use crate::router::Router;
-use crate::types::{HttpMethod, RouteMatch};
+use crate::enums::{HttpMethod};
+use crate::types::{RouteMatch};
 use hashbrown::HashMap as FastHashMap;
 
 use super::converter::{copy_static_maps, extract_root};
