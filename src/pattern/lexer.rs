@@ -1,14 +1,13 @@
-use crate::errors::{RouterError, RouterResult};
-use crate::pattern::PatternError;
+use crate::pattern::{PatternError, PatternResult};
 
 use super::{SegmentPart, SegmentPattern};
 
 #[tracing::instrument(level = "trace", fields(segment=%seg))]
-pub fn parse_segment(seg: &str) -> RouterResult<SegmentPattern> {
+pub fn parse_segment(seg: &str) -> PatternResult<SegmentPattern> {
     if seg.contains('(') || seg.contains(')') {
-        return Err(RouterError::from(PatternError::ParenthesisNotAllowed {
+        return Err(PatternError::ParenthesisNotAllowed {
             segment: seg.to_string(),
-        }));
+        });
     }
 
     let bytes = seg.as_bytes();
@@ -17,9 +16,9 @@ pub fn parse_segment(seg: &str) -> RouterResult<SegmentPattern> {
         let mut j = 1usize;
 
         if j >= bytes.len() {
-            return Err(RouterError::from(PatternError::ParameterMissingName {
+            return Err(PatternError::ParameterMissingName {
                 segment: seg.to_string(),
-            }));
+            });
         }
 
         while j < bytes.len() {
@@ -35,37 +34,35 @@ pub fn parse_segment(seg: &str) -> RouterResult<SegmentPattern> {
         let name = &seg[1..];
 
         if name.contains(':') {
-            return Err(RouterError::from(
-                PatternError::ParameterNameContainsColon {
-                    segment: seg.to_string(),
-                    name: name.to_string(),
-                },
-            ));
+            return Err(PatternError::ParameterNameContainsColon {
+                segment: seg.to_string(),
+                name: name.to_string(),
+            });
         }
 
         let nb = name.as_bytes();
 
         if nb.is_empty() {
-            return Err(RouterError::from(PatternError::ParameterNameEmpty {
+            return Err(PatternError::ParameterNameEmpty {
                 segment: seg.to_string(),
-            }));
+            });
         }
 
         if !(nb[0].is_ascii_alphabetic() || nb[0] == b'_') {
-            return Err(RouterError::from(PatternError::ParameterInvalidStart {
+            return Err(PatternError::ParameterInvalidStart {
                 segment: seg.to_string(),
                 name: name.to_string(),
                 found: nb[0] as char,
-            }));
+            });
         }
 
         for &c in &nb[1..] {
             if !(c.is_ascii_alphanumeric() || c == b'_') {
-                return Err(RouterError::from(PatternError::ParameterInvalidCharacter {
+                return Err(PatternError::ParameterInvalidCharacter {
                     segment: seg.to_string(),
                     name: name.to_string(),
                     invalid: c as char,
-                }));
+                });
             }
         }
 
@@ -77,11 +74,9 @@ pub fn parse_segment(seg: &str) -> RouterResult<SegmentPattern> {
     }
 
     if seg.contains(':') {
-        return Err(RouterError::from(
-            PatternError::MixedParameterLiteralSyntax {
-                segment: seg.to_string(),
-            },
-        ));
+        return Err(PatternError::MixedParameterLiteralSyntax {
+            segment: seg.to_string(),
+        });
     }
 
     let lit_norm = seg.to_string();

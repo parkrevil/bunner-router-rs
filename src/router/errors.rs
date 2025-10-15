@@ -1,7 +1,5 @@
-use crate::path::PathError;
-use crate::pattern::PatternError;
 use crate::radix::RadixError;
-use crate::readonly::ReadOnlyError;
+use crate::types::HttpMethod;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -15,13 +13,10 @@ pub enum RouterError {
     #[error("router is not sealed; readonly snapshot is unavailable")]
     ReadOnlyUnavailable,
     #[error(transparent)]
-    Path(#[from] PathError),
-    #[error(transparent)]
-    Pattern(#[from] PatternError),
-    #[error(transparent)]
     Radix(#[from] RadixError),
-    #[error(transparent)]
-    ReadOnly(#[from] ReadOnlyError),
+    #[error("no route matched for method {method:?} and path '{path}'")]
+    RouteNotFound { method: HttpMethod, path: String },
 }
 
 pub type RouterResult<T> = Result<T, RouterError>;
+

@@ -2,8 +2,7 @@ use bumpalo::Bump;
 use hashbrown::HashMap as FastHashMap;
 use hashbrown::HashSet as FastHashSet;
 
-use super::RadixError;
-use crate::errors::{RouterError, RouterResult};
+use super::{RadixError, RadixResult};
 use crate::pattern::{SegmentPart, SegmentPattern};
 use crate::router::RouterOptions;
 use crate::tools::Interner;
@@ -69,15 +68,15 @@ impl RadixTree {
         super::builder::finalize(self);
     }
 
-    pub fn insert_bulk<I>(&mut self, worker_id: WorkerId, entries: I) -> RouterResult<Vec<u16>>
+    pub fn insert_bulk<I>(&mut self, worker_id: WorkerId, entries: I) -> RadixResult<Vec<u16>>
     where
         I: IntoIterator<Item = (HttpMethod, String)>,
     {
         if self.root_node.is_sealed() {
-            return Err(RouterError::from(RadixError::TreeSealed {
+            return Err(RadixError::TreeSealed {
                 operation: "insert_bulk",
                 path: None,
-            }));
+            });
         }
 
         // Phase A: parallel preprocess (normalize/parse) with light metadata
@@ -142,7 +141,7 @@ impl RadixTree {
             }
             drop(tx);
 
-            let mut first_err: Option<RouterError> = None;
+        let mut first_err: Option<RadixError> = None;
             for msg in rx.iter() {
                 match msg {
                     Ok((idx, method, segs, head, plen, is_static, lits)) => {
@@ -206,11 +205,11 @@ impl RadixTree {
             use std::sync::atomic::Ordering;
             let cur = self.next_route_key.load(Ordering::Relaxed);
             if cur as usize + n >= MAX_ROUTES as usize {
-                return Err(RouterError::from(RadixError::MaxRoutesExceeded {
+                return Err(RadixError::MaxRoutesExceeded {
                     requested: Some(n),
                     current_next_key: cur,
                     limit: MAX_ROUTES,
-                }));
+                });
             }
             self.next_route_key.fetch_add(n as u16, Ordering::Relaxed)
         };

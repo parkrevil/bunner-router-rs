@@ -1,13 +1,12 @@
 use super::{
     MAX_ROUTES, RadixTree, RadixTreeNode, create_node_box_from_arena_pointer, node::PatternMeta,
 };
-use crate::errors::{RouterError, RouterResult};
 use crate::path::{PathError, normalize_and_validate_path};
 use crate::pattern::{
     SegmentPart, SegmentPattern, parse_segment, pattern_compatible_policy, pattern_is_pure_static,
     pattern_score,
 };
-use crate::radix::RadixError;
+use crate::radix::{RadixError, RadixResult};
 use crate::tools::Interner;
 use crate::types::{HttpMethod, WorkerId};
 use hashbrown::HashSet;
@@ -19,13 +18,13 @@ impl RadixTree {
         worker_id: WorkerId,
         method: HttpMethod,
         path: &str,
-    ) -> RouterResult<u16> {
+    ) -> RadixResult<u16> {
         tracing::event!(tracing::Level::TRACE, operation="insert", method=?method, path=%path);
         if self.root_node.is_sealed() {
-            return Err(RouterError::from(RadixError::TreeSealed {
+            return Err(RadixError::TreeSealed {
                 operation: "insert",
                 path: Some(path.to_string()),
-            }));
+            });
         }
         self.root_node.set_dirty(true);
 
@@ -49,13 +48,13 @@ impl RadixTree {
         worker_id: WorkerId,
         method: HttpMethod,
         parsed_segments: Vec<SegmentPattern>,
-    ) -> RouterResult<u16> {
+    ) -> RadixResult<u16> {
         tracing::event!(tracing::Level::TRACE, operation="insert_parsed", method=?method, segments=parsed_segments.len() as u64);
         if self.root_node.is_sealed() {
-            return Err(RouterError::from(RadixError::TreeSealed {
+            return Err(RadixError::TreeSealed {
                 operation: "insert_parsed",
                 path: None,
-            }));
+            });
         }
         self.root_node.set_dirty(true);
 
@@ -127,13 +126,13 @@ impl RadixTree {
         method: HttpMethod,
         parsed_segments: Vec<SegmentPattern>,
         assigned_key: u16,
-    ) -> RouterResult<u16> {
+    ) -> RadixResult<u16> {
         tracing::event!(tracing::Level::TRACE, operation="insert_parsed_preassigned", method=?method, segments=parsed_segments.len() as u64, assigned_key=assigned_key as u64);
         if self.root_node.is_sealed() {
-            return Err(RouterError::from(RadixError::TreeSealed {
+            return Err(RadixError::TreeSealed {
                 operation: "insert_parsed_preassigned",
                 path: None,
-            }));
+            });
         }
         self.root_node.set_dirty(true);
 
@@ -184,16 +183,17 @@ impl RadixTree {
             current.set_dirty(true);
         }
 
-        assign_route_key_preassigned(
+        let key = assign_route_key_preassigned(
             &mut self.route_worker_side_table,
             current,
             method,
             assigned_key,
             worker_id,
-        )
+        )?;
+        Ok(key)
     }
 
-    pub(super) fn prepare_path_segments(&self, path: &str) -> RouterResult<Vec<SegmentPattern>> {
+    pub(super) fn prepare_path_segments(&self, path: &str) -> RadixResult<Vec<SegmentPattern>> {
         prepare_path_segments_standalone(path)
     }
 }
@@ -236,12 +236,12 @@ fn find_or_create_pattern_child<'a>(
     node: &'a mut RadixTreeNode,
     pat: &SegmentPattern,
     arena_ptr: *const bumpalo::Bump,
-) -> RouterResult<&'a mut RadixTreeNode> {
+) -> RadixResult<&'a mut RadixTreeNode> {
     for exist in node.patterns.iter() {
         if !pattern_compatible_policy(exist, pat) {
-            return Err(RouterError::from(RadixError::ParamNameConflict {
+            return Err(RadixError::ParamNameConflict {
                 pattern: format!("{:?}", pat),
-            }));
+            });
         }
     }
 
@@ -271,21 +271,21 @@ fn handle_wildcard_insert(
     total_segments: usize,
     next_route_key: &AtomicU16,
     worker_id: WorkerId,
-) -> RouterResult<u16> {
+) -> RadixResult<u16> {
     if index != total_segments - 1 {
-        return Err(RouterError::from(RadixError::WildcardMustBeTerminal {
+        return Err(RadixError::WildcardMustBeTerminal {
             segment_index: index,
             total_segments,
-        }));
+        });
     }
     let method_idx = method as usize;
     if node.wildcard_routes[method_idx] != 0 {
         let existing_key = node.wildcard_routes[method_idx] - 1;
         if side_table.get(existing_key as usize).and_then(|v| *v) == Some(worker_id) {
-            return Err(RouterError::from(RadixError::DuplicateWildcardRoute {
+            return Err(RadixError::DuplicateWildcardRoute {
                 worker_id,
                 existing_key,
-            }));
+            });
         }
         return Ok(existing_key);
     }
@@ -306,21 +306,21 @@ fn handle_wildcard_insert_preassigned(
     total_segments: usize,
     assigned_key: u16,
     worker_id: WorkerId,
-) -> RouterResult<u16> {
+) -> RadixResult<u16> {
     if index != total_segments - 1 {
-        return Err(RouterError::from(RadixError::WildcardMustBeTerminal {
+        return Err(RadixError::WildcardMustBeTerminal {
             segment_index: index,
             total_segments,
-        }));
+        });
     }
     let method_idx = method as usize;
     if node.wildcard_routes[method_idx] != 0 {
         let existing_key = node.wildcard_routes[method_idx] - 1;
         if side_table.get(existing_key as usize).and_then(|v| *v) == Some(worker_id) {
-            return Err(RouterError::from(RadixError::DuplicateWildcardRoute {
+            return Err(RadixError::DuplicateWildcardRoute {
                 worker_id,
                 existing_key,
-            }));
+            });
         }
         return Ok(existing_key);
     }
@@ -336,25 +336,25 @@ fn assign_route_key(
     method: HttpMethod,
     next_route_key: &AtomicU16,
     worker_id: WorkerId,
-) -> RouterResult<u16> {
+) -> RadixResult<u16> {
     let method_idx = method as usize;
     if node.routes[method_idx] != 0 {
         let existing_key = node.routes[method_idx] - 1;
         if side_table.get(existing_key as usize).and_then(|v| *v) == Some(worker_id) {
-            return Err(RouterError::from(RadixError::DuplicateRoute {
+            return Err(RadixError::DuplicateRoute {
                 worker_id,
                 existing_key,
-            }));
+            });
         }
         return Ok(existing_key);
     }
     let current_key = next_route_key.load(std::sync::atomic::Ordering::Relaxed);
     if current_key == MAX_ROUTES {
-        return Err(RouterError::from(RadixError::MaxRoutesExceeded {
+        return Err(RadixError::MaxRoutesExceeded {
             requested: None,
             current_next_key: current_key,
             limit: MAX_ROUTES,
-        }));
+        });
     }
     let key = next_route_key.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     node.routes[method_idx] = key + 1;
@@ -373,15 +373,15 @@ fn assign_route_key_preassigned(
     method: HttpMethod,
     assigned_key: u16,
     worker_id: WorkerId,
-) -> RouterResult<u16> {
+) -> RadixResult<u16> {
     let method_idx = method as usize;
     if node.routes[method_idx] != 0 {
         let existing_key = node.routes[method_idx] - 1;
         if side_table.get(existing_key as usize).and_then(|v| *v) == Some(worker_id) {
-            return Err(RouterError::from(RadixError::DuplicateRoute {
+            return Err(RadixError::DuplicateRoute {
                 worker_id,
                 existing_key,
-            }));
+            });
         }
         return Ok(existing_key);
     }
@@ -418,7 +418,7 @@ impl SegmentPart {
 }
 
 // Thread-safe standalone parser for bulk preprocess
-pub(super) fn prepare_path_segments_standalone(path: &str) -> RouterResult<Vec<SegmentPattern>> {
+pub(super) fn prepare_path_segments_standalone(path: &str) -> RadixResult<Vec<SegmentPattern>> {
     // Use the unified path validation function
     let norm = normalize_and_validate_path(path)?;
     if norm == "/" {
@@ -427,10 +427,11 @@ pub(super) fn prepare_path_segments_standalone(path: &str) -> RouterResult<Vec<S
 
     let segments: Vec<&str> = norm.split('/').filter(|s| !s.is_empty()).collect();
     if segments.is_empty() {
-        return Err(RouterError::from(PathError::InvalidAfterNormalization {
+        return Err(PathError::InvalidAfterNormalization {
             input: path.to_string(),
             normalized: norm,
-        }));
+        }
+        .into());
     }
 
     let mut parsed_segments = Vec::with_capacity(segments.len());
@@ -451,22 +452,22 @@ pub(super) fn prepare_path_segments_standalone(path: &str) -> RouterResult<Vec<S
         }
 
         if !PatternMeta::is_valid_length(min_len, last_lit_len) {
-            return Err(RouterError::from(RadixError::PatternLengthExceeded {
+            return Err(RadixError::PatternLengthExceeded {
                 segment: seg.to_string(),
                 path: path.to_string(),
                 min_length: min_len,
                 last_literal_length: last_lit_len,
-            }));
+            });
         }
 
         for part in &pat.parts {
             if let SegmentPart::Param { name, .. } = part {
                 let name_owned = name.clone();
                 if !seen_params.insert(name_owned.clone()) {
-                    return Err(RouterError::from(RadixError::DuplicateParamName {
+                    return Err(RadixError::DuplicateParamName {
                         param: name_owned,
                         path: path.to_string(),
-                    }));
+                    });
                 }
             }
         }

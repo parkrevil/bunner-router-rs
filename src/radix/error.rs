@@ -1,3 +1,5 @@
+use crate::path::PathError;
+use crate::pattern::PatternError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -37,4 +39,10 @@ pub enum RadixError {
     },
     #[error("duplicate parameter name '{param}' in path '{path}'")]
     DuplicateParamName { param: String, path: String },
+    #[error(transparent)]
+    Path(#[from] PathError),
+    #[error(transparent)]
+    Pattern(#[from] PatternError),
 }
+
+pub type RadixResult<T> = Result<T, RadixError>;

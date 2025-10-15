@@ -1,5 +1,4 @@
-use crate::errors::RouterResult;
-use crate::radix::RadixTree;
+use crate::radix::{RadixResult, RadixTree};
 use crate::registry::RegistryMetrics;
 use crate::router::RouterOptions;
 use crate::types::{HttpMethod, WorkerId};
@@ -23,13 +22,13 @@ impl RouteRegistry {
         worker_id: WorkerId,
         method: HttpMethod,
         path: &str,
-    ) -> RouterResult<u16> {
+    ) -> RadixResult<u16> {
         let key = self.tree.insert(worker_id, method, path)?;
         self.metrics.record_insert();
         Ok(key)
     }
 
-    pub fn insert_bulk<I>(&mut self, worker_id: WorkerId, entries: I) -> RouterResult<Vec<u16>>
+    pub fn insert_bulk<I>(&mut self, worker_id: WorkerId, entries: I) -> RadixResult<Vec<u16>>
     where
         I: IntoIterator<Item = (HttpMethod, String)>,
     {

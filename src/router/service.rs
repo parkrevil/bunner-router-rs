@@ -1,5 +1,5 @@
-use crate::errors::{RouterError, RouterResult};
 use crate::readonly::RouterReadOnly;
+use super::{RouterError, RouterResult};
 use crate::registry::RouteRegistry;
 use crate::router::RouterOptions;
 use crate::types::{HttpMethod, RouteMatch, WorkerId};
@@ -44,7 +44,8 @@ impl Router {
             });
         }
 
-        guard.registry.insert(worker_id, method, path)
+    let key = guard.registry.insert(worker_id, method, path)?;
+    Ok(key)
     }
 
     pub fn add_bulk<I>(&self, worker_id: WorkerId, entries: I) -> RouterResult<Vec<u16>>
@@ -60,7 +61,8 @@ impl Router {
             });
         }
 
-        guard.registry.insert_bulk(worker_id, entries)
+    let keys = guard.registry.insert_bulk(worker_id, entries)?;
+    Ok(keys)
     }
 
     pub fn seal(&self) {

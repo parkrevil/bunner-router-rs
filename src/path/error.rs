@@ -19,3 +19,5 @@ pub enum PathError {
     #[error("route path syntax invalid after normalization of '{input}' to '{normalized}'")]
     InvalidAfterNormalization { input: String, normalized: String },
 }
+
+pub type PathResult<T> = Result<T, PathError>;

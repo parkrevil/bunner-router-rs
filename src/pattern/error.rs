@@ -29,3 +29,5 @@ pub enum PatternError {
     #[error("segment '{segment}' mixes parameter and literal syntax")]
     MixedParameterLiteralSyntax { segment: String },
 }
+
+pub type PatternResult<T> = Result<T, PatternError>;

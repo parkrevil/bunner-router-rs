@@ -10,14 +10,14 @@ fn expect_error<T: std::fmt::Debug>(result: RouterResult<T>) -> RouterError {
 
 fn expect_path_error<T: std::fmt::Debug>(result: RouterResult<T>) -> PathError {
     match expect_error(result) {
-        RouterError::Path(err) => err,
+        RouterError::Radix(RadixError::Path(err)) => err,
         other => panic!("expected path error, got {other:?}"),
     }
 }
 
 fn expect_pattern_error<T: std::fmt::Debug>(result: RouterResult<T>) -> PatternError {
     match expect_error(result) {
-        RouterError::Pattern(err) => err,
+        RouterError::Radix(RadixError::Pattern(err)) => err,
         other => panic!("expected pattern error, got {other:?}"),
     }
 }
@@ -31,8 +31,10 @@ fn expect_radix_error<T: std::fmt::Debug>(result: RouterResult<T>) -> RadixError
 
 fn expect_readonly_error<T: std::fmt::Debug>(result: RouterResult<T>) -> ReadOnlyError {
     match expect_error(result) {
-        RouterError::ReadOnly(err) => err,
-        other => panic!("expected readonly error, got {other:?}"),
+        RouterError::RouteNotFound { method, path } => {
+            ReadOnlyError::RouteNotFound { method, path }
+        }
+        other => panic!("expected route-not-found error, got {other:?}"),
     }
 }
 
