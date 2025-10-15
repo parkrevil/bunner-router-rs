@@ -1,9 +1,9 @@
 use super::{RouterError, RouterResult};
+use crate::enums::HttpMethod;
 use crate::readonly::RouterReadOnly;
 use crate::registry::RouteRegistry;
 use crate::router::RouterOptions;
-use crate::enums::{HttpMethod};
-use crate::types::{RouteMatch};
+use crate::types::RouteMatch;
 use parking_lot::RwLock;
 use std::sync::Arc;
 use std::sync::OnceLock;

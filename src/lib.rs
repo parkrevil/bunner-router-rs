@@ -1,3 +1,4 @@
+pub mod enums;
 pub mod matcher;
 pub mod path;
 pub mod pattern;
@@ -6,9 +7,8 @@ pub mod readonly;
 pub mod registry;
 pub mod router;
 pub mod tools;
-pub mod enums;
 pub mod types;
 
+pub use enums::HttpMethod;
 pub use router::{Router, RouterError, RouterOptions, RouterReadOnly, RouterResult};
-pub use enums::{HttpMethod};
-pub use types::{RouteMatch};
+pub use types::RouteMatch;

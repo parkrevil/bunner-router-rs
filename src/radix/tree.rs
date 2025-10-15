@@ -3,10 +3,10 @@ use hashbrown::HashMap as FastHashMap;
 use hashbrown::HashSet as FastHashSet;
 
 use super::{RadixError, RadixResult};
+use crate::enums::HttpMethod;
 use crate::pattern::{SegmentPart, SegmentPattern};
 use crate::router::RouterOptions;
 use crate::tools::Interner;
-use crate::enums::HttpMethod;
 
 pub const HTTP_METHOD_COUNT: usize = 7;
 

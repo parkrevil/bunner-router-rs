@@ -1,8 +1,8 @@
+use crate::enums::HttpMethod;
 use crate::matcher::ParamEntry;
 use crate::pattern::match_segment;
 use crate::readonly::ReadOnlyNode;
-use crate::enums::{HttpMethod};
-use crate::types::{RouteMatch};
+use crate::types::RouteMatch;
 
 pub fn find_route(
     root: &ReadOnlyNode,

@@ -1,6 +1,7 @@
 use super::{
     MAX_ROUTES, RadixTree, RadixTreeNode, create_node_box_from_arena_pointer, node::PatternMeta,
 };
+use crate::enums::HttpMethod;
 use crate::path::{PathError, normalize_and_validate_path};
 use crate::pattern::{
     SegmentPart, SegmentPattern, parse_segment, pattern_compatible_policy, pattern_is_pure_static,
@@ -8,7 +9,6 @@ use crate::pattern::{
 };
 use crate::radix::{RadixError, RadixResult};
 use crate::tools::Interner;
-use crate::enums::HttpMethod;
 use hashbrown::HashSet;
 use std::sync::atomic::AtomicU16;
 

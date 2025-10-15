@@ -1,10 +1,10 @@
+use crate::enums::HttpMethod;
 use crate::matcher::{find_route, with_param_buffer};
 use crate::path::normalize_and_validate_path;
 use crate::pattern::SegmentPattern;
 use crate::radix::{HTTP_METHOD_COUNT, RadixTree};
 use crate::router::Router;
-use crate::enums::{HttpMethod};
-use crate::types::{RouteMatch};
+use crate::types::RouteMatch;
 use hashbrown::HashMap as FastHashMap;
 
 use super::converter::{copy_static_maps, extract_root};

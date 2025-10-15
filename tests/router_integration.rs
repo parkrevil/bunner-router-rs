@@ -165,13 +165,11 @@ fn router_supports_wildcard_segments() {
 fn router_add_bulk_registers_multiple_routes() {
     let router = Router::new(None);
     let keys = router
-        .add_bulk(
-            vec![
-                (HttpMethod::Get, "/bulk/one".to_string()),
-                (HttpMethod::Get, "/bulk/two".to_string()),
-                (HttpMethod::Post, "/bulk/post".to_string()),
-            ],
-        )
+        .add_bulk(vec![
+            (HttpMethod::Get, "/bulk/one".to_string()),
+            (HttpMethod::Get, "/bulk/two".to_string()),
+            (HttpMethod::Post, "/bulk/post".to_string()),
+        ])
         .expect("bulk registration should succeed");
 
     assert_eq!(keys.len(), 3);
@@ -192,12 +190,10 @@ fn router_add_bulk_registers_multiple_routes() {
 #[test]
 fn router_add_bulk_propagates_invalid_path_error() {
     let router = Router::new(None);
-    let err = router.add_bulk(
-        vec![
-            (HttpMethod::Get, "/valid".to_string()),
-            (HttpMethod::Get, "/\tinvalid".to_string()),
-        ],
-    );
+    let err = router.add_bulk(vec![
+        (HttpMethod::Get, "/valid".to_string()),
+        (HttpMethod::Get, "/\tinvalid".to_string()),
+    ]);
 
     match expect_path_error(err) {
         PathError::ControlOrWhitespace { byte, .. } => assert_eq!(byte, b'\t'),

@@ -1,7 +1,7 @@
+use crate::enums::HttpMethod;
 use crate::radix::{RadixResult, RadixTree};
 use crate::registry::RegistryMetrics;
 use crate::router::RouterOptions;
-use crate::enums::HttpMethod;
 
 #[derive(Debug)]
 pub struct RouteRegistry {
@@ -23,10 +23,7 @@ impl RouteRegistry {
         Ok(key)
     }
 
-    pub fn insert_bulk(
-        &mut self,
-        entries: Vec<(HttpMethod, String)>,
-    ) -> RadixResult<Vec<u16>> {
+    pub fn insert_bulk(&mut self, entries: Vec<(HttpMethod, String)>) -> RadixResult<Vec<u16>> {
         let out = self.tree.insert_bulk(entries)?;
         self.metrics.record_bulk(out.len());
         Ok(out)
