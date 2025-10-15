@@ -1,4 +1,5 @@
 mod ast;
+mod compiled;
 mod error;
 mod lexer;
 mod matcher;
@@ -9,6 +10,10 @@ mod segment;
 pub use ast::{
     GroupNode, ParameterConstraint, ParameterNode, PatternAst, PatternNode, Quantifier,
     WildcardNode,
+};
+pub use compiled::{
+    CompiledPattern, GroupElement, ParameterElement, QuantifierSpan, RouteElement, SegmentAtom,
+    SegmentElement, WildcardElement, compile_pattern_ast,
 };
 pub use error::{PatternError, PatternResult};
 pub use lexer::parse_segment;

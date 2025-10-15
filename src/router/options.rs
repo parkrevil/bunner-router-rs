@@ -15,6 +15,13 @@ pub enum MatchOrder {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum RepeatMatchMode {
+    #[default]
+    Greedy,
+    Lazy,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ParamStyle {
     #[default]
     Colon,
@@ -239,6 +246,7 @@ pub struct RouterConfig {
     pub normalize_path: bool,
     pub allow_duplicate_slash: bool,
     pub match_order: MatchOrder,
+    pub repeat_match_mode: RepeatMatchMode,
     pub param_pattern_default: String,
     pub max_param_depth: usize,
     pub cache_routes: bool,
@@ -257,6 +265,7 @@ impl Default for RouterConfig {
             normalize_path: true,
             allow_duplicate_slash: false,
             match_order: MatchOrder::default(),
+            repeat_match_mode: RepeatMatchMode::default(),
             param_pattern_default: String::from("[^/]+"),
             max_param_depth: 8,
             cache_routes: true,
@@ -330,6 +339,11 @@ impl RouterConfigBuilder {
 
     pub fn match_order(mut self, value: MatchOrder) -> Self {
         self.config.match_order = value;
+        self
+    }
+
+    pub fn repeat_match_mode(mut self, value: RepeatMatchMode) -> Self {
+        self.config.repeat_match_mode = value;
         self
     }
 
