@@ -1,5 +1,5 @@
 use crate::radix::RadixError;
-use crate::types::HttpMethod;
+use crate::readonly::ReadOnlyError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -14,8 +14,8 @@ pub enum RouterError {
     ReadOnlyUnavailable,
     #[error(transparent)]
     Radix(#[from] RadixError),
-    #[error("no route matched for method {method:?} and path '{path}'")]
-    RouteNotFound { method: HttpMethod, path: String },
+    #[error(transparent)]
+    ReadOnly(#[from] ReadOnlyError),
 }
 
 pub type RouterResult<T> = Result<T, RouterError>;

@@ -79,7 +79,7 @@ impl Router {
         let guard = self.inner.read();
 
         match guard.readonly.get() {
-            Some(ro) => ro.find(method, path),
+            Some(ro) => Ok(ro.find(method, path)?),
             None => Err(RouterError::FindWhileMutable),
         }
     }

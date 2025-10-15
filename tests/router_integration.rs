@@ -31,10 +31,8 @@ fn expect_radix_error<T: std::fmt::Debug>(result: RouterResult<T>) -> RadixError
 
 fn expect_readonly_error<T: std::fmt::Debug>(result: RouterResult<T>) -> ReadOnlyError {
     match expect_error(result) {
-        RouterError::RouteNotFound { method, path } => {
-            ReadOnlyError::RouteNotFound { method, path }
-        }
-        other => panic!("expected route-not-found error, got {other:?}"),
+        RouterError::ReadOnly(err) => err,
+        other => panic!("expected readonly error, got {other:?}"),
     }
 }
 
@@ -297,6 +295,7 @@ fn router_reports_path_not_found() {
             assert_eq!(method, HttpMethod::Get);
             assert_eq!(path, "/missing");
         }
+        ReadOnlyError::Path(err) => panic!("unexpected path error during readonly lookup: {err:?}"),
     }
 }
 

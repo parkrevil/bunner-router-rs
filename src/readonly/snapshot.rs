@@ -1,12 +1,12 @@
 use crate::matcher::{find_route, with_param_buffer};
 use crate::path::normalize_and_validate_path;
 use crate::pattern::SegmentPattern;
-use crate::radix::{HTTP_METHOD_COUNT, RadixError, RadixTree};
+use crate::radix::{HTTP_METHOD_COUNT, RadixTree};
 use crate::router::Router;
-use crate::router::{RouterError, RouterResult};
 use crate::types::{HttpMethod, RouteMatch};
 use hashbrown::HashMap as FastHashMap;
 
+use super::{ReadOnlyError, ReadOnlyResult};
 use super::converter::{copy_static_maps, extract_root};
 
 #[derive(Debug, Clone, Default)]
@@ -39,11 +39,10 @@ impl RouterReadOnly {
     }
 
     #[tracing::instrument(skip(self, path), fields(method=?method, path=%path))]
-    pub fn find(&self, method: HttpMethod, path: &str) -> RouterResult<RouteMatch> {
+    pub fn find(&self, method: HttpMethod, path: &str) -> ReadOnlyResult<RouteMatch> {
         tracing::event!(tracing::Level::TRACE, operation="find", method=?method, path=%path);
 
-        let normalized = normalize_and_validate_path(path)
-            .map_err(|err| RouterError::from(RadixError::from(err)))?;
+        let normalized = normalize_and_validate_path(path).map_err(ReadOnlyError::from)?;
 
         if let Some(route_key) = self.find_static_normalized(method, &normalized) {
             return Ok((route_key, Vec::new()));
@@ -54,7 +53,7 @@ impl RouterReadOnly {
         if let Some((route_key, params)) = found {
             Ok((route_key, params))
         } else {
-            Err(RouterError::RouteNotFound {
+            Err(ReadOnlyError::RouteNotFound {
                 method,
                 path: normalized,
             })
