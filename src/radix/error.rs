@@ -13,16 +13,12 @@ pub enum RadixError {
         total_segments: usize,
     },
     #[error("worker {worker_id} already registered wildcard route with key {existing_key}")]
-    DuplicateWildcardRoute {
-        worker_id: u32,
-        existing_key: u16,
-    },
+    DuplicateWildcardRoute { worker_id: u32, existing_key: u16 },
     #[error("worker {worker_id} already registered route with key {existing_key}")]
-    DuplicateRoute {
-        worker_id: u32,
-        existing_key: u16,
-    },
-    #[error("maximum number of routes exceeded: requested {requested:?}, current_next_key {current_next_key}, limit {limit}")]
+    DuplicateRoute { worker_id: u32, existing_key: u16 },
+    #[error(
+        "maximum number of routes exceeded: requested {requested:?}, current_next_key {current_next_key}, limit {limit}"
+    )]
     MaxRoutesExceeded {
         requested: Option<usize>,
         current_next_key: u16,
@@ -30,7 +26,9 @@ pub enum RadixError {
     },
     #[error("parameter name conflict between patterns: {pattern}")]
     ParamNameConflict { pattern: String },
-    #[error("pattern length exceeds allowed limits for segment '{segment}' in path '{path}' (min_length {min_length}, last_literal_length {last_literal_length})")]
+    #[error(
+        "pattern length exceeds allowed limits for segment '{segment}' in path '{path}' (min_length {min_length}, last_literal_length {last_literal_length})"
+    )]
     PatternLengthExceeded {
         segment: String,
         path: String,

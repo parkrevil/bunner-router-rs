@@ -7,11 +7,11 @@ use crate::pattern::{
     SegmentPart, SegmentPattern, parse_segment, pattern_compatible_policy, pattern_is_pure_static,
     pattern_score,
 };
+use crate::radix::RadixError;
 use crate::tools::Interner;
 use crate::types::{HttpMethod, WorkerId};
 use hashbrown::HashSet;
 use std::sync::atomic::AtomicU16;
-use crate::radix::RadixError;
 
 impl RadixTree {
     pub fn insert(

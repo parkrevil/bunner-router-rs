@@ -50,11 +50,11 @@ pub fn normalize_and_validate_path(path: &str) -> RouterResult<String> {
             | b'/'
             | b'%' => {}
             _ => {
-                    return Err(RouterError::from(PathError::DisallowedCharacter {
-                        input: path.to_string(),
-                        character: b as char,
-                        byte: b,
-                    }));
+                return Err(RouterError::from(PathError::DisallowedCharacter {
+                    input: path.to_string(),
+                    character: b as char,
+                    byte: b,
+                }));
             }
         }
     }

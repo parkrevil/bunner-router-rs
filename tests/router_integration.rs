@@ -1,9 +1,6 @@
 use bunner_router_rs::{
-    path::PathError,
-    pattern::PatternError,
-    radix::RadixError,
-    readonly::ReadOnlyError,
-    HttpMethod, Router, RouterError, RouterOptions, RouterResult,
+    HttpMethod, Router, RouterError, RouterOptions, RouterResult, path::PathError,
+    pattern::PatternError, radix::RadixError, readonly::ReadOnlyError,
 };
 use std::sync::Arc;
 

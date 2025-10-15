@@ -35,10 +35,12 @@ pub fn parse_segment(seg: &str) -> RouterResult<SegmentPattern> {
         let name = &seg[1..];
 
         if name.contains(':') {
-            return Err(RouterError::from(PatternError::ParameterNameContainsColon {
-                segment: seg.to_string(),
-                name: name.to_string(),
-            }));
+            return Err(RouterError::from(
+                PatternError::ParameterNameContainsColon {
+                    segment: seg.to_string(),
+                    name: name.to_string(),
+                },
+            ));
         }
 
         let nb = name.as_bytes();
@@ -75,9 +77,11 @@ pub fn parse_segment(seg: &str) -> RouterResult<SegmentPattern> {
     }
 
     if seg.contains(':') {
-        return Err(RouterError::from(PatternError::MixedParameterLiteralSyntax {
-            segment: seg.to_string(),
-        }));
+        return Err(RouterError::from(
+            PatternError::MixedParameterLiteralSyntax {
+                segment: seg.to_string(),
+            },
+        ));
     }
 
     let lit_norm = seg.to_string();

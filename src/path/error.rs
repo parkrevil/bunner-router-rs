@@ -15,13 +15,7 @@ pub enum PathError {
         byte: u8,
     },
     #[error("path '{input}' normalizes to invalid parent traversal '{normalized}'")]
-    InvalidParentTraversal {
-        input: String,
-        normalized: String,
-    },
+    InvalidParentTraversal { input: String, normalized: String },
     #[error("route path syntax invalid after normalization of '{input}' to '{normalized}'")]
-    InvalidAfterNormalization {
-        input: String,
-        normalized: String,
-    },
+    InvalidAfterNormalization { input: String, normalized: String },
 }

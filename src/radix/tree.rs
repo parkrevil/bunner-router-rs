@@ -2,8 +2,8 @@ use bumpalo::Bump;
 use hashbrown::HashMap as FastHashMap;
 use hashbrown::HashSet as FastHashSet;
 
-use crate::errors::{RouterError, RouterResult};
 use super::RadixError;
+use crate::errors::{RouterError, RouterResult};
 use crate::pattern::{SegmentPart, SegmentPattern};
 use crate::router::RouterOptions;
 use crate::tools::Interner;
