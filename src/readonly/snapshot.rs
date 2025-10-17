@@ -5,7 +5,7 @@ use crate::radix::{HTTP_METHOD_COUNT, RadixTree};
 use crate::router::{Preprocessor, Router};
 use crate::types::RouteMatch;
 use hashbrown::HashMap as FastHashMap;
-use parking_lot::RwLock;
+use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use regex::Regex;
 use std::sync::Arc;
 
@@ -100,8 +100,8 @@ impl RouterReadOnly {
             .map(|_| RouteCacheKey::new(method, cache_key.to_string()));
 
         if let (Some(cache), Some(key)) = (self.cache.as_ref(), cache_lookup_key.as_ref()) {
-            let mut guard = cache.write();
-            if let Some(hit) = guard.get(key) {
+            let guard = cache.upgradable_read();
+            if let Some(hit) = guard.peek(key) {
                 if let Some(stats) = &self.cache_stats {
                     stats.record_hit();
                 }
@@ -114,6 +114,8 @@ impl RouterReadOnly {
                         "router cache hit"
                     );
                 }
+                let mut guard = RwLockUpgradableReadGuard::upgrade(guard);
+                guard.touch(key);
                 return Ok(hit);
             } else {
                 if let Some(stats) = &self.cache_stats {

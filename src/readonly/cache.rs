@@ -23,12 +23,14 @@ impl RouteCache {
         }
     }
 
-    pub fn get(&mut self, key: &RouteCacheKey) -> Option<RouteMatch> {
-        let result = self.map.get(key).map(|value| value.result.clone());
-        if result.is_some() {
+    pub fn peek(&self, key: &RouteCacheKey) -> Option<RouteMatch> {
+        self.map.get(key).map(|value| value.result.clone())
+    }
+
+    pub fn touch(&mut self, key: &RouteCacheKey) {
+        if self.map.contains_key(key) {
             self.promote(key);
         }
-        result
     }
 
     pub fn insert(&mut self, key: RouteCacheKey, result: RouteMatch) {
@@ -95,5 +97,42 @@ impl CacheStats {
             self.hits.load(Ordering::Relaxed),
             self.misses.load(Ordering::Relaxed),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_match() -> RouteMatch {
+        (42, Vec::new())
+    }
+
+    #[test]
+    fn peek_returns_value_without_changing_order() {
+        let mut cache = RouteCache::new(4);
+        let key = RouteCacheKey::new(HttpMethod::Get, "/peek".to_string());
+        cache.insert(key.clone(), sample_match());
+
+        let front_before = cache.order.front().cloned();
+        let result = cache.peek(&key);
+        let front_after = cache.order.front().cloned();
+
+        assert_eq!(result, Some(sample_match()));
+        assert_eq!(front_before, front_after);
+        assert_eq!(front_after, Some(key));
+    }
+
+    #[test]
+    fn touch_promotes_entry_to_front() {
+        let mut cache = RouteCache::new(4);
+        let first = RouteCacheKey::new(HttpMethod::Get, "/first".to_string());
+        let second = RouteCacheKey::new(HttpMethod::Get, "/second".to_string());
+        cache.insert(first.clone(), sample_match());
+        cache.insert(second.clone(), sample_match());
+
+        assert_eq!(cache.order.front(), Some(&second));
+        cache.touch(&first);
+        assert_eq!(cache.order.front(), Some(&first));
     }
 }
