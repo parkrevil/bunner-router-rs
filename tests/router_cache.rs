@@ -1,4 +1,4 @@
-use bunner_router_rs::{HttpMethod, Router, RouterOptions};
+use bunner_router_rs::{HttpMethod, Router};
 
 #[test]
 fn router_when_cache_enabled_then_records_hits_and_misses() {
@@ -33,24 +33,4 @@ fn router_when_cache_enabled_then_records_hits_and_misses() {
         .expect("cache metrics should be present");
     assert_eq!(hits_after_second, 1);
     assert_eq!(misses_after_second, 1);
-}
-
-#[test]
-fn router_when_cache_disabled_then_returns_no_metrics() {
-    let router = Router::new(Some(
-        RouterOptions::builder()
-            .cache_routes(false)
-            .build()
-            .expect("options should build"),
-    ));
-    router
-        .add(HttpMethod::Get, "/nocache")
-        .expect("route should register");
-    router.seal();
-
-    let readonly = router
-        .get_readonly()
-        .expect("readonly snapshot should be available");
-
-    assert_eq!(readonly.cache_metrics(), None);
 }

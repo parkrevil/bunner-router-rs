@@ -49,9 +49,8 @@ pub struct RadixTree {
 
 impl RadixTree {
     pub fn new(configuration: RouterOptions) -> Self {
-        let enable_root_level_pruning = configuration.tuning.enable_root_level_pruning;
-        let enable_static_route_full_mapping =
-            configuration.tuning.enable_static_route_full_mapping;
+        let enable_root_level_pruning = false;
+        let enable_static_route_full_mapping = false;
         let preprocessor = Preprocessor::new(configuration.clone());
         let arena = Rc::new(Bump::with_capacity(128 * 1024));
         let arena_handle = ArenaHandle::new(arena);

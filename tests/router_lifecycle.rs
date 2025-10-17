@@ -1,4 +1,4 @@
-use bunner_router_rs::{HttpMethod, Router, RouterError, RouterOptions, RouterTuning};
+use bunner_router_rs::{HttpMethod, Router, RouterError};
 
 #[test]
 fn router_when_find_called_before_seal_then_returns_error() {
@@ -65,19 +65,4 @@ fn router_when_route_limit_exceeded_then_returns_error() {
         }
         other => panic!("unexpected error: {other:?}"),
     }
-}
-
-#[test]
-fn router_when_router_tuning_configured_then_values_propagate() {
-    let tuning = RouterTuning {
-        enable_root_level_pruning: true,
-        enable_static_route_full_mapping: true,
-        enable_automatic_optimization: false,
-    };
-    let options = RouterOptions::builder()
-        .tuning(tuning.clone())
-        .build()
-        .expect("options should build");
-
-    assert_eq!(options.tuning, tuning);
 }

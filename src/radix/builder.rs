@@ -20,34 +20,32 @@ pub(super) fn finalize(tree: &mut RadixTree) {
     });
 
     // --- Automatic Optimization Logic ---
-    if tree.options.tuning.enable_automatic_optimization {
-        // 1. Auto-enable root pruning
-        let has_root_param_or_wildcard = {
-            let n = &tree.root_node;
-            let mut has_dynamic = false;
-            for m in 0..HTTP_METHOD_COUNT {
-                if n.wildcard_routes[m] != 0 {
-                    has_dynamic = true;
-                    break;
-                }
+    // Always enabled: heuristics decide whether to apply optimizations.
+    let has_root_param_or_wildcard = {
+        let n = &tree.root_node;
+        let mut has_dynamic = false;
+        for m in 0..HTTP_METHOD_COUNT {
+            if n.wildcard_routes[m] != 0 {
+                has_dynamic = true;
+                break;
             }
-            if !has_dynamic {
-                has_dynamic = !n.pattern_param_first.is_empty();
-            }
-            has_dynamic
-        };
-
-        if !has_root_param_or_wildcard {
-            tree.enable_root_level_pruning = true;
         }
-
-        // 2. Auto-enable static full map based on heuristics
-        let mut static_route_count = 0;
-        count_static(&tree.root_node, &mut static_route_count);
-
-        if static_route_count >= STATIC_MAP_THRESHOLD {
-            tree.enable_static_route_full_mapping = true;
+        if !has_dynamic {
+            has_dynamic = !n.pattern_param_first.is_empty();
         }
+        has_dynamic
+    };
+
+    if !has_root_param_or_wildcard {
+        tree.enable_root_level_pruning = true;
+    }
+
+    // Auto-enable static full map based on heuristics
+    let mut static_route_count = 0;
+    count_static(&tree.root_node, &mut static_route_count);
+
+    if static_route_count >= STATIC_MAP_THRESHOLD {
+        tree.enable_static_route_full_mapping = true;
     }
     // --- End of Automatic Optimization Logic ---
 

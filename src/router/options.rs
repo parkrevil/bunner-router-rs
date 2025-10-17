@@ -1,11 +1,12 @@
 use crate::enums::HttpMethod;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use thiserror::Error;
 
 const ROUTE_PRIORITY_MIN: i32 = -100;
 const ROUTE_PRIORITY_MAX: i32 = 100;
+pub const DEFAULT_PARAM_PATTERN: &str = "[^/]+";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum MatchOrder {
@@ -26,90 +27,6 @@ pub enum ParamStyle {
     #[default]
     Colon,
     Braces,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ParserOptions {
-    pub allow_regex_in_param: bool,
-    pub allow_nested_optional: bool,
-    pub allow_repeat_in_optional: bool,
-    pub param_style: ParamStyle,
-    pub escape_chars: Vec<char>,
-    pub validate_regex_syntax: bool,
-}
-
-impl Default for ParserOptions {
-    fn default() -> Self {
-        Self {
-            allow_regex_in_param: false,
-            allow_nested_optional: false,
-            allow_repeat_in_optional: false,
-            param_style: ParamStyle::Colon,
-            escape_chars: vec!['\\'],
-            validate_regex_syntax: true,
-        }
-    }
-}
-
-impl ParserOptions {
-    pub fn builder() -> ParserOptionsBuilder {
-        ParserOptionsBuilder::default()
-    }
-
-    pub fn validate(&self) -> Result<(), RouterConfigError> {
-        let mut seen = HashSet::new();
-        for ch in &self.escape_chars {
-            if !seen.insert(*ch) {
-                return Err(RouterConfigError::DuplicateEscapeChar { ch: *ch });
-            }
-        }
-        Ok(())
-    }
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct ParserOptionsBuilder {
-    options: ParserOptions,
-}
-
-impl ParserOptionsBuilder {
-    pub fn allow_regex_in_param(mut self, value: bool) -> Self {
-        self.options.allow_regex_in_param = value;
-        self
-    }
-
-    pub fn allow_nested_optional(mut self, value: bool) -> Self {
-        self.options.allow_nested_optional = value;
-        self
-    }
-
-    pub fn allow_repeat_in_optional(mut self, value: bool) -> Self {
-        self.options.allow_repeat_in_optional = value;
-        self
-    }
-
-    pub fn param_style(mut self, value: ParamStyle) -> Self {
-        self.options.param_style = value;
-        self
-    }
-
-    pub fn escape_chars<I>(mut self, value: I) -> Self
-    where
-        I: Into<Vec<char>>,
-    {
-        self.options.escape_chars = value.into();
-        self
-    }
-
-    pub fn validate_regex_syntax(mut self, value: bool) -> Self {
-        self.options.validate_regex_syntax = value;
-        self
-    }
-
-    pub fn build(self) -> Result<ParserOptions, RouterConfigError> {
-        self.options.validate()?;
-        Ok(self.options)
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -222,23 +139,6 @@ impl RouteOptionsBuilder {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct RouterTuning {
-    pub enable_root_level_pruning: bool,
-    pub enable_static_route_full_mapping: bool,
-    pub enable_automatic_optimization: bool,
-}
-
-impl Default for RouterTuning {
-    fn default() -> Self {
-        Self {
-            enable_root_level_pruning: false,
-            enable_static_route_full_mapping: false,
-            enable_automatic_optimization: true,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RouterConfig {
     pub case_sensitive: bool,
     pub strict_trailing_slash: bool,
@@ -247,13 +147,9 @@ pub struct RouterConfig {
     pub allow_duplicate_slash: bool,
     pub match_order: MatchOrder,
     pub repeat_match_mode: RepeatMatchMode,
-    pub param_pattern_default: String,
     pub max_param_depth: usize,
-    pub cache_routes: bool,
     pub debug: bool,
     pub route_defaults: RouteOptions,
-    pub parser: ParserOptions,
-    pub tuning: RouterTuning,
 }
 
 impl Default for RouterConfig {
@@ -266,13 +162,9 @@ impl Default for RouterConfig {
             allow_duplicate_slash: false,
             match_order: MatchOrder::default(),
             repeat_match_mode: RepeatMatchMode::default(),
-            param_pattern_default: String::from("[^/]+"),
             max_param_depth: 8,
-            cache_routes: true,
             debug: false,
             route_defaults: RouteOptions::default(),
-            parser: ParserOptions::default(),
-            tuning: RouterTuning::default(),
         }
     }
 }
@@ -286,23 +178,13 @@ impl RouterConfig {
         if self.max_param_depth == 0 {
             return Err(RouterConfigError::MaxParamDepthInvalid { provided: 0 });
         }
-        if self.param_pattern_default.trim().is_empty() {
-            return Err(RouterConfigError::EmptyParamPatternDefault);
-        }
-        compile_param_pattern(&self.param_pattern_default).map_err(|err| {
-            RouterConfigError::InvalidParamPatternDefault {
-                pattern: self.param_pattern_default.clone(),
-                error: err.to_string(),
-            }
-        })?;
-        self.parser.validate()?;
         self.route_defaults.validate()?;
         Ok(())
     }
 
-    pub(crate) fn param_pattern_default_regex(&self) -> Regex {
-        compile_param_pattern(&self.param_pattern_default)
-            .expect("param_pattern_default validated during router config build")
+    pub fn param_pattern_default_regex(&self) -> Regex {
+        Regex::new(&format!("^(?:{})$", DEFAULT_PARAM_PATTERN))
+            .expect("default param pattern should compile")
     }
 }
 
@@ -347,18 +229,8 @@ impl RouterConfigBuilder {
         self
     }
 
-    pub fn param_pattern_default<S: Into<String>>(mut self, value: S) -> Self {
-        self.config.param_pattern_default = value.into();
-        self
-    }
-
     pub fn max_param_depth(mut self, value: usize) -> Self {
         self.config.max_param_depth = value;
-        self
-    }
-
-    pub fn cache_routes(mut self, value: bool) -> Self {
-        self.config.cache_routes = value;
         self
     }
 
@@ -369,16 +241,6 @@ impl RouterConfigBuilder {
 
     pub fn route_defaults(mut self, route_defaults: RouteOptions) -> Self {
         self.config.route_defaults = route_defaults;
-        self
-    }
-
-    pub fn parser(mut self, parser: ParserOptions) -> Self {
-        self.config.parser = parser;
-        self
-    }
-
-    pub fn tuning(mut self, tuning: RouterTuning) -> Self {
-        self.config.tuning = tuning;
         self
     }
 
@@ -393,24 +255,14 @@ impl RouterConfigBuilder {
 pub enum RouterConfigError {
     #[error("max_param_depth must be at least 1 (got {provided})")]
     MaxParamDepthInvalid { provided: usize },
-    #[error("param_pattern_default cannot be empty")]
-    EmptyParamPatternDefault,
-    #[error("param_pattern_default regex '{pattern}' is invalid: {error}")]
-    InvalidParamPatternDefault { pattern: String, error: String },
     #[error("route methods cannot be empty")]
     EmptyRouteMethods,
     #[error("route priority {value} is outside the supported range {min}..={max}")]
     RoutePriorityOutOfRange { value: i32, min: i32, max: i32 },
     #[error("alias must not be empty")]
     EmptyAlias,
-    #[error("duplicate escape character '{ch}' in parser options")]
-    DuplicateEscapeChar { ch: char },
 }
 
 pub type RouterOptions = RouterConfig;
 pub type RouterOptionsBuilder = RouterConfigBuilder;
 pub type RouterOptionsError = RouterConfigError;
-
-fn compile_param_pattern(pattern: &str) -> Result<Regex, regex::Error> {
-    Regex::new(&format!("^(?:{})$", pattern))
-}

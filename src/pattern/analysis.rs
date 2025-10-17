@@ -2,7 +2,7 @@ use regex::escape;
 
 use super::ast::{GroupNode, ParameterNode, PatternAst, PatternNode, Quantifier};
 use super::{PatternResult, compile_pattern_ast, parse_pattern};
-use crate::router::{ParamStyle, ParserOptions, RepeatMatchMode};
+use crate::router::{ParamStyle, RepeatMatchMode};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PatternAnalysis {
@@ -35,35 +35,32 @@ pub enum PatternToken {
 
 pub fn compile(
     pattern: &str,
-    options: &ParserOptions,
     repeat_mode: RepeatMatchMode,
 ) -> PatternResult<super::CompiledPattern> {
-    let ast = parse_pattern(pattern, options)?;
+    let ast = parse_pattern(pattern)?;
     compile_pattern_ast(&ast, repeat_mode)
 }
 
-pub fn tokens(pattern: &str, options: &ParserOptions) -> PatternResult<Vec<PatternToken>> {
-    let ast = parse_pattern(pattern, options)?;
+pub fn tokens(pattern: &str) -> PatternResult<Vec<PatternToken>> {
+    let ast = parse_pattern(pattern)?;
     Ok(collect_tokens(&ast))
 }
 
 pub fn to_regex(
     pattern: &str,
-    options: &ParserOptions,
     repeat_mode: RepeatMatchMode,
     default_param_pattern: &str,
 ) -> PatternResult<String> {
-    let ast = parse_pattern(pattern, options)?;
+    let ast = parse_pattern(pattern)?;
     Ok(build_regex(&ast.nodes, repeat_mode, default_param_pattern))
 }
 
 pub fn analyze(
     pattern: &str,
-    options: &ParserOptions,
     repeat_mode: RepeatMatchMode,
     default_param_pattern: &str,
 ) -> PatternResult<PatternAnalysis> {
-    let ast = parse_pattern(pattern, options)?;
+    let ast = parse_pattern(pattern)?;
     let compiled = compile_pattern_ast(&ast, repeat_mode)?;
     let tokens = collect_tokens(&ast);
     let regex = build_regex(&ast.nodes, repeat_mode, default_param_pattern);

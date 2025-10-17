@@ -1,10 +1,9 @@
 use crate::pattern::{PatternError, PatternResult};
-use crate::router::ParserOptions;
 
 use super::{SegmentPart, SegmentPattern, segment::ParamConstraint};
 
-#[tracing::instrument(level = "trace", skip(parser), fields(segment=%seg))]
-pub fn parse_segment(seg: &str, parser: &ParserOptions) -> PatternResult<SegmentPattern> {
+#[tracing::instrument(level = "trace", fields(segment=%seg))]
+pub fn parse_segment(seg: &str) -> PatternResult<SegmentPattern> {
     let bytes = seg.as_bytes();
 
     if bytes.first().copied() == Some(b':') {
@@ -69,13 +68,6 @@ pub fn parse_segment(seg: &str, parser: &ParserOptions) -> PatternResult<Segment
                     segment: seg.to_string(),
                 });
             }
-            if !parser.allow_regex_in_param {
-                return Err(PatternError::RegexConstraintNotAllowed {
-                    pattern: seg.to_string(),
-                    name: name.to_string(),
-                });
-            }
-
             let mut depth = 1usize;
             let mut escaped = false;
             let mut buf = String::new();

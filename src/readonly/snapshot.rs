@@ -32,14 +32,10 @@ impl RouterReadOnly {
             let root = extract_root(&tree.root_node);
             let preprocessor = tree.preprocessor.clone();
             let options = tree.options.clone();
-            let cache = if options.cache_routes {
-                Some(Arc::new(RwLock::new(RouteCache::new(
-                    DEFAULT_CACHE_CAPACITY,
-                ))))
-            } else {
-                None
-            };
-            let cache_stats = cache.as_ref().map(|_| Arc::new(CacheStats::default()));
+            let cache = Some(Arc::new(RwLock::new(RouteCache::new(
+                DEFAULT_CACHE_CAPACITY,
+            ))));
+            let cache_stats = Some(Arc::new(CacheStats::default()));
             let debug = options.debug;
             let param_pattern_default = Arc::new(options.param_pattern_default_regex());
 
@@ -60,14 +56,10 @@ impl RouterReadOnly {
         let root = extract_root(&tree.root_node);
         let preprocessor = tree.preprocessor.clone();
         let options = tree.options.clone();
-        let cache = if options.cache_routes {
-            Some(Arc::new(RwLock::new(RouteCache::new(
-                DEFAULT_CACHE_CAPACITY,
-            ))))
-        } else {
-            None
-        };
-        let cache_stats = cache.as_ref().map(|_| Arc::new(CacheStats::default()));
+        let cache = Some(Arc::new(RwLock::new(RouteCache::new(
+            DEFAULT_CACHE_CAPACITY,
+        ))));
+        let cache_stats = Some(Arc::new(CacheStats::default()));
         let debug = options.debug;
         let param_pattern_default = Arc::new(options.param_pattern_default_regex());
 
@@ -191,8 +183,10 @@ impl Default for RouterReadOnly {
             static_maps: std::array::from_fn(|_| FastHashMap::default()),
             root: ReadOnlyNode::default(),
             preprocessor: Preprocessor::default(),
-            cache: None,
-            cache_stats: None,
+            cache: Some(Arc::new(RwLock::new(RouteCache::new(
+                DEFAULT_CACHE_CAPACITY,
+            )))),
+            cache_stats: Some(Arc::new(CacheStats::default())),
             debug: false,
             param_pattern_default: Arc::new(
                 Regex::new("^(?:[^/]+)$").expect("default param pattern should compile"),

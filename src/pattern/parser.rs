@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use regex::Regex;
 
 use crate::pattern::ast::{
@@ -7,10 +5,10 @@ use crate::pattern::ast::{
     WildcardNode,
 };
 use crate::pattern::{PatternError, PatternResult};
-use crate::router::{ParamStyle, ParserOptions};
+use crate::router::ParamStyle;
 
-pub fn parse_pattern(pattern: &str, options: &ParserOptions) -> PatternResult<PatternAst> {
-    let mut parser = PatternParser::new(pattern, options);
+pub fn parse_pattern(pattern: &str) -> PatternResult<PatternAst> {
+    let mut parser = PatternParser::new(pattern);
     let nodes = parser.parse_sequence(None, None)?;
     if parser.peek().is_some() {
         // Should never happen due to parser exhausting input, but guard just in case.
@@ -21,7 +19,7 @@ pub fn parse_pattern(pattern: &str, options: &ParserOptions) -> PatternResult<Pa
     }
 
     let ast = PatternAst::new(nodes);
-    validate_ast(&ast, pattern, options)?;
+    validate_ast(&ast, pattern)?;
     Ok(ast)
 }
 
@@ -29,21 +27,15 @@ struct PatternParser<'a> {
     pattern: &'a str,
     chars: Vec<(usize, char)>,
     index: usize,
-    escape_chars: HashSet<char>,
 }
 
 impl<'a> PatternParser<'a> {
-    fn new(pattern: &'a str, options: &'a ParserOptions) -> Self {
+    fn new(pattern: &'a str) -> Self {
         let chars: Vec<(usize, char)> = pattern.char_indices().collect();
-        let mut escape_chars = HashSet::new();
-        for ch in &options.escape_chars {
-            escape_chars.insert(*ch);
-        }
         Self {
             pattern,
             chars,
             index: 0,
-            escape_chars,
         }
     }
 
@@ -389,7 +381,7 @@ impl<'a> PatternParser<'a> {
     }
 
     fn is_escape_char(&self, ch: char) -> bool {
-        self.escape_chars.contains(&ch)
+        ch == '\\'
     }
 
     fn consume_escape_char(&mut self) -> PatternResult<char> {
@@ -405,61 +397,28 @@ impl<'a> PatternParser<'a> {
     }
 }
 
-fn validate_ast(ast: &PatternAst, pattern: &str, options: &ParserOptions) -> PatternResult<()> {
-    validate_nodes(&ast.nodes, pattern, options, 0)?;
-    validate_constraints(&ast.nodes, pattern, options)?;
+fn validate_ast(ast: &PatternAst, pattern: &str) -> PatternResult<()> {
+    validate_nodes(&ast.nodes, pattern, 0)?;
+    validate_constraints(&ast.nodes, pattern)?;
     Ok(())
 }
 
+#[allow(clippy::only_used_in_recursion)]
 fn validate_nodes(
     nodes: &[PatternNode],
     pattern: &str,
-    options: &ParserOptions,
     optional_depth: usize,
 ) -> PatternResult<()> {
     for node in nodes {
         match node {
-            PatternNode::Parameter(param) => {
-                if param.quantifier.is_optional()
-                    && optional_depth > 0
-                    && !options.allow_nested_optional
-                {
-                    return Err(PatternError::NestedOptionalNotAllowed {
-                        pattern: pattern.to_string(),
-                    });
-                }
-                if param.quantifier.is_repeating()
-                    && optional_depth > 0
-                    && !options.allow_repeat_in_optional
-                {
-                    return Err(PatternError::RepeatInOptionalNotAllowed {
-                        pattern: pattern.to_string(),
-                        modifier: quantifier_modifier(param.quantifier),
-                    });
-                }
-            }
+            PatternNode::Parameter(_param) => {}
             PatternNode::Group(group) => {
                 let mut next_optional_depth = optional_depth;
                 if group.quantifier.is_optional() {
-                    if optional_depth > 0 && !options.allow_nested_optional {
-                        return Err(PatternError::NestedOptionalNotAllowed {
-                            pattern: pattern.to_string(),
-                        });
-                    }
                     next_optional_depth += 1;
                 }
 
-                if group.quantifier.is_repeating()
-                    && optional_depth > 0
-                    && !options.allow_repeat_in_optional
-                {
-                    return Err(PatternError::RepeatInOptionalNotAllowed {
-                        pattern: pattern.to_string(),
-                        modifier: quantifier_modifier(group.quantifier),
-                    });
-                }
-
-                validate_nodes(&group.nodes, pattern, options, next_optional_depth)?;
+                validate_nodes(&group.nodes, pattern, next_optional_depth)?;
             }
             _ => {}
         }
@@ -470,44 +429,26 @@ fn validate_nodes(
 fn validate_constraints(
     nodes: &[PatternNode],
     pattern: &str,
-    options: &ParserOptions,
 ) -> PatternResult<()> {
     for node in nodes {
         match node {
             PatternNode::Parameter(param) => {
                 if let Some(constraint) = &param.constraint {
-                    if !options.allow_regex_in_param {
-                        return Err(PatternError::RegexConstraintNotAllowed {
+                    let source = format!("^(?:{})$", constraint.raw);
+                    if let Err(err) = Regex::new(&source) {
+                        return Err(PatternError::RegexConstraintInvalid {
                             pattern: pattern.to_string(),
                             name: param.name.clone(),
+                            error: err.to_string(),
                         });
-                    }
-                    if options.validate_regex_syntax {
-                        let source = format!("^(?:{})$", constraint.raw);
-                        if let Err(err) = Regex::new(&source) {
-                            return Err(PatternError::RegexConstraintInvalid {
-                                pattern: pattern.to_string(),
-                                name: param.name.clone(),
-                                error: err.to_string(),
-                            });
-                        }
                     }
                 }
             }
             PatternNode::Group(group) => {
-                validate_constraints(&group.nodes, pattern, options)?;
+                validate_constraints(&group.nodes, pattern)?;
             }
             _ => {}
         }
     }
     Ok(())
-}
-
-fn quantifier_modifier(quantifier: Quantifier) -> char {
-    match quantifier {
-        Quantifier::ZeroOrOne => '?',
-        Quantifier::ZeroOrMore => '*',
-        Quantifier::OneOrMore => '+',
-        Quantifier::One => '?', // Should never be queried for Quantifier::One
-    }
 }

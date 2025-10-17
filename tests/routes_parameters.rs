@@ -1,6 +1,5 @@
 use bunner_router_rs::{
-    HttpMethod, ParserOptions, Router, RouterError, RouterOptions, RouterOptionsError,
-    pattern::PatternError, readonly::ReadOnlyError,
+    HttpMethod, Router, RouterError, pattern::PatternError, readonly::ReadOnlyError,
 };
 
 #[test]
@@ -21,32 +20,8 @@ fn router_when_parameter_route_registered_then_extracts_values() {
 }
 
 #[test]
-fn router_when_regex_constraint_not_enabled_then_returns_error() {
-    let router = Router::new(None);
-    let err = router.add(HttpMethod::Get, "/users/:id(\\d+)");
-
-    match err.expect_err("expected regex constraint not allowed error") {
-        RouterError::Radix(bunner_router_rs::radix::RadixError::Pattern(
-            PatternError::RegexConstraintNotAllowed { name, .. },
-        )) => {
-            assert_eq!(name, "id");
-        }
-        other => panic!("unexpected error: {other:?}"),
-    }
-}
-
-#[test]
 fn router_when_regex_constraint_invalid_then_returns_error() {
-    let options = RouterOptions::builder()
-        .parser(
-            ParserOptions::builder()
-                .allow_regex_in_param(true)
-                .build()
-                .expect("parser options should build"),
-        )
-        .build()
-        .expect("router options should build");
-    let router = Router::new(Some(options));
+    let router = Router::new(None);
     let err = router.add(HttpMethod::Get, "/users/:id([)");
 
     match err.expect_err("expected invalid regex error") {
@@ -61,16 +36,7 @@ fn router_when_regex_constraint_invalid_then_returns_error() {
 
 #[test]
 fn router_when_regex_constraint_enabled_then_matches_only_allowed_values() {
-    let options = RouterOptions::builder()
-        .parser(
-            ParserOptions::builder()
-                .allow_regex_in_param(true)
-                .build()
-                .expect("parser options should build"),
-        )
-        .build()
-        .expect("router options should build");
-    let router = Router::new(Some(options));
+    let router = Router::new(None);
 
     let key = router
         .add(HttpMethod::Get, "/users/:id(\\d+)")
@@ -102,41 +68,6 @@ fn router_when_duplicate_parameter_names_used_then_returns_error() {
             ..
         }) => {
             assert_eq!(param, "id");
-        }
-        other => panic!("unexpected error: {other:?}"),
-    }
-}
-
-#[test]
-fn router_when_param_pattern_default_is_numeric_then_rejects_letters() {
-    let router = Router::new(Some(
-        RouterOptions::builder()
-            .param_pattern_default("\\d+")
-            .build()
-            .expect("options should build"),
-    ));
-    router
-        .add(HttpMethod::Get, "/users/:id")
-        .expect("numeric parameter should register");
-    router.seal();
-
-    let err = router.find(HttpMethod::Get, "/users/abc");
-    match err.expect_err("expected route not found") {
-        RouterError::ReadOnly(ReadOnlyError::RouteNotFound { method, path }) => {
-            assert_eq!(method, HttpMethod::Get);
-            assert_eq!(path, "/users/abc");
-        }
-        other => panic!("unexpected error: {other:?}"),
-    }
-}
-
-#[test]
-fn router_when_param_pattern_default_is_invalid_then_returns_error() {
-    let err = RouterOptions::builder().param_pattern_default("[").build();
-
-    match err.expect_err("expected invalid regex error") {
-        RouterOptionsError::InvalidParamPatternDefault { pattern, .. } => {
-            assert_eq!(pattern, "[");
         }
         other => panic!("unexpected error: {other:?}"),
     }
