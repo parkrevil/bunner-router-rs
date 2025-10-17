@@ -19,13 +19,7 @@ impl Interner {
 
     #[inline]
     pub fn intern(&self, s: &str) -> u32 {
-        if let Some(id) = self
-            .inner
-            .read()
-            .map
-            .get(s)
-            .copied()
-        {
+        if let Some(id) = self.inner.read().map.get(s).copied() {
             return id;
         }
 
