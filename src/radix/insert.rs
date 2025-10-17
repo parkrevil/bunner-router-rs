@@ -1,6 +1,4 @@
-use super::{
-    ArenaHandle, MAX_ROUTES, RadixTree, RadixTreeNode, node::PatternMeta,
-};
+use super::{ArenaHandle, MAX_ROUTES, RadixTree, RadixTreeNode, node::PatternMeta};
 use crate::enums::HttpMethod;
 use crate::path::PathError;
 use crate::pattern::{
@@ -42,8 +40,8 @@ impl RadixTree {
         }
         self.root_node.set_dirty(true);
 
-    let mut current = &mut self.root_node;
-    let arena = self.arena_handle.clone();
+        let mut current = &mut self.root_node;
+        let arena = self.arena_handle.clone();
 
         for (i, pat) in parsed_segments.iter().enumerate() {
             // Fast check without allocation: single literal '*' means wildcard
@@ -63,9 +61,8 @@ impl RadixTree {
             // Detect pure static without building a joined string
             if pat.parts.len() == 1 {
                 if let SegmentPart::Literal(lit) = &pat.parts[0] {
-                    current = current.descend_static_mut_with_alloc(lit.as_str(), || {
-                        arena.alloc_node()
-                    });
+                    current =
+                        current.descend_static_mut_with_alloc(lit.as_str(), || arena.alloc_node());
                     sort_static_children(current, &self.interner);
                 } else {
                     current = find_or_create_pattern_child(current, pat, &arena)?;
@@ -80,9 +77,8 @@ impl RadixTree {
                         _ => "",
                     })
                     .collect::<String>();
-                current = current.descend_static_mut_with_alloc(joined.as_str(), || {
-                    arena.alloc_node()
-                });
+                current =
+                    current.descend_static_mut_with_alloc(joined.as_str(), || arena.alloc_node());
                 sort_static_children(current, &self.interner);
             } else {
                 current = find_or_create_pattern_child(current, pat, &arena)?;
@@ -111,8 +107,8 @@ impl RadixTree {
         }
         self.root_node.set_dirty(true);
 
-    let mut current = &mut self.root_node;
-    let arena = self.arena_handle.clone();
+        let mut current = &mut self.root_node;
+        let arena = self.arena_handle.clone();
 
         for (i, pat) in parsed_segments.iter().enumerate() {
             let is_wildcard =
@@ -129,9 +125,8 @@ impl RadixTree {
 
             if pat.parts.len() == 1 {
                 if let SegmentPart::Literal(lit) = &pat.parts[0] {
-                    current = current.descend_static_mut_with_alloc(&lit.clone(), || {
-                        arena.alloc_node()
-                    });
+                    current =
+                        current.descend_static_mut_with_alloc(&lit.clone(), || arena.alloc_node());
                     sort_static_children(current, &self.interner);
                 } else {
                     current = find_or_create_pattern_child(current, pat, &arena)?;
@@ -145,9 +140,7 @@ impl RadixTree {
                         _ => "",
                     })
                     .collect::<String>();
-                current = current.descend_static_mut_with_alloc(&joined, || {
-                    arena.alloc_node()
-                });
+                current = current.descend_static_mut_with_alloc(&joined, || arena.alloc_node());
                 sort_static_children(current, &self.interner);
             } else {
                 current = find_or_create_pattern_child(current, pat, &arena)?;

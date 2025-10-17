@@ -3,12 +3,12 @@ use hashbrown::HashMap as FastHashMap;
 use hashbrown::HashSet as FastHashSet;
 
 use super::{ArenaHandle, RadixError, RadixResult};
-use std::rc::Rc;
 use crate::enums::HttpMethod;
 use crate::pattern::SegmentPattern;
 use crate::radix::insert::{first_non_slash_byte, infer_static_guess, preprocess_and_parse};
 use crate::router::{Preprocessor, RouterOptions};
 use crate::tools::Interner;
+use std::rc::Rc;
 
 pub const HTTP_METHOD_COUNT: usize = 7;
 
@@ -50,8 +50,8 @@ impl RadixTree {
         let enable_static_route_full_mapping =
             configuration.tuning.enable_static_route_full_mapping;
         let preprocessor = Preprocessor::new(configuration.clone());
-    let arena = Rc::new(Bump::with_capacity(128 * 1024));
-    let arena_handle = ArenaHandle::new(arena);
+        let arena = Rc::new(Bump::with_capacity(128 * 1024));
+        let arena_handle = ArenaHandle::new(arena);
 
         Self {
             root_node: super::node::RadixTreeNode::default(),
@@ -192,7 +192,7 @@ impl RadixTree {
         });
         let n = pre.len();
         let base = {
-        use std::sync::atomic::Ordering;
+            use std::sync::atomic::Ordering;
             let cur = self.next_route_key.load(Ordering::Relaxed);
             if cur as usize + n >= MAX_ROUTES as usize {
                 return Err(RadixError::MaxRoutesExceeded {
