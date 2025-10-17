@@ -3,13 +3,13 @@ use crate::matcher::{find_route, with_param_buffer};
 use crate::pattern::SegmentPattern;
 use crate::radix::{HTTP_METHOD_COUNT, RadixTree};
 use crate::router::{Preprocessor, Router};
-use crate::types::RouteMatch;
+use crate::types::{RouteMatch, RouteParams};
 use hashbrown::HashMap as FastHashMap;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use regex::Regex;
 use std::sync::Arc;
 
-use super::cache::{CacheStats, DEFAULT_CACHE_CAPACITY, RouteCache, RouteCacheKey};
+use super::cache::{CacheStats, RouteCache, RouteCacheKey, DEFAULT_CACHE_CAPACITY};
 use super::converter::{copy_static_maps, extract_root};
 use super::{ReadOnlyError, ReadOnlyResult};
 
@@ -134,7 +134,7 @@ impl RouterReadOnly {
         }
 
         if let Some(route_key) = self.find_static_normalized(method, cache_key) {
-            let result = (route_key, Vec::new());
+            let result = (route_key, RouteParams::new());
             if let (Some(cache), Some(key)) = (self.cache.as_ref(), cache_lookup_key.as_ref()) {
                 cache.write().insert(key.clone(), result.clone());
             }

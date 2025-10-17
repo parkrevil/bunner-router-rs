@@ -103,9 +103,10 @@ impl CacheStats {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::RouteParams;
 
     fn sample_match() -> RouteMatch {
-        (42, Vec::new())
+        (42, RouteParams::new())
     }
 
     #[test]

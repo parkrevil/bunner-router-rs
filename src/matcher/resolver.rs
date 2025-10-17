@@ -1,26 +1,28 @@
 use crate::enums::HttpMethod;
-use crate::matcher::ParamEntry;
+use crate::matcher::captures_to_map;
 use crate::pattern::match_segment;
 use crate::readonly::ReadOnlyNode;
-use crate::types::RouteMatch;
+use crate::types::{CapturedParam, RouteMatch};
 use regex::Regex;
 
+#[allow(clippy::ptr_arg)]
 pub fn find_route(
     root: &ReadOnlyNode,
     method: HttpMethod,
     normalized: &str,
-    params: &mut Vec<ParamEntry>,
+    params: &mut Vec<CapturedParam>,
     default_param_pattern: &Regex,
 ) -> Option<RouteMatch> {
     find_from(root, method, normalized, 0, params, default_param_pattern)
 }
 
+#[allow(clippy::ptr_arg)]
 fn find_from(
     node: &ReadOnlyNode,
     method: HttpMethod,
     path: &str,
     index: usize,
-    params: &mut Vec<ParamEntry>,
+    params: &mut Vec<CapturedParam>,
     default_param_pattern: &Regex,
 ) -> Option<RouteMatch> {
     let current_index = skip_slashes(path, index);
@@ -57,7 +59,7 @@ fn find_from(
         {
             return Some(found);
         }
-        return handle_terminal(node, method, params);
+    return handle_terminal(node, method, path, params);
     }
 
     let (segment, next_index) = split_segment(path, current_index);
@@ -105,29 +107,32 @@ fn find_from(
     None
 }
 
+#[allow(clippy::ptr_arg)]
 fn handle_terminal(
     node: &ReadOnlyNode,
     method: HttpMethod,
-    params: &mut Vec<ParamEntry>,
+    path: &str,
+    params: &mut Vec<CapturedParam>,
 ) -> Option<RouteMatch> {
     let method_index = method as usize;
     let rk = node.routes[method_index];
     if rk != 0 {
-        return Some((rk - 1, params.to_owned()));
+        return Some((rk - 1, captures_to_map(path, params.clone())));
     }
     let wildcard = node.wildcard_routes[method_index];
     if wildcard != 0 {
-        return Some((wildcard - 1, params.to_owned()));
+        return Some((wildcard - 1, captures_to_map(path, params.clone())));
     }
     None
 }
 
+#[allow(clippy::ptr_arg)]
 fn handle_wildcard(
     node: &ReadOnlyNode,
     method: HttpMethod,
     path: &str,
     start_index: usize,
-    params: &mut Vec<ParamEntry>,
+    params: &mut Vec<CapturedParam>,
 ) -> Option<RouteMatch> {
     let wildcard = node.wildcard_routes[method as usize];
     if wildcard == 0 {
@@ -145,7 +150,7 @@ fn handle_wildcard(
         }
     }
 
-    Some((wildcard - 1, params.clone()))
+    Some((wildcard - 1, captures_to_map(path, params.clone())))
 }
 
 fn skip_slashes(s: &str, mut index: usize) -> usize {

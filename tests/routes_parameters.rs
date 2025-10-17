@@ -4,7 +4,7 @@ use bunner_router_rs::{
 };
 
 #[test]
-fn router_when_parameter_route_registered_then_extracts_offsets() {
+fn router_when_parameter_route_registered_then_extracts_values() {
     let router = Router::new(None);
     let key = router
         .add(HttpMethod::Get, "/users/:id/profile")
@@ -16,7 +16,8 @@ fn router_when_parameter_route_registered_then_extracts_offsets() {
         .expect("parameter route should match");
 
     assert_eq!(matched_key, key);
-    assert_eq!(params, vec![("id".to_string(), (7, 3))]);
+    assert_eq!(params.len(), 1);
+    assert_eq!(params.get("id").map(|s| s.as_str()), Some("123"));
 }
 
 #[test]

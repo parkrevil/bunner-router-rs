@@ -15,4 +15,4 @@ pub use router::{
     RouteOptionsBuilder, Router, RouterError, RouterOptions, RouterOptionsBuilder,
     RouterOptionsError, RouterReadOnly, RouterResult, RouterTuning,
 };
-pub use types::RouteMatch;
+pub use types::{RouteMatch, RouteParams};

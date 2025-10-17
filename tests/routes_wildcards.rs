@@ -14,10 +14,10 @@ fn router_when_wildcard_route_registered_then_captures_suffix_segment() {
 
     assert_eq!(matched_key, 0);
     assert_eq!(params.len(), 1);
-    assert_eq!(params[0].0, "*");
-    let (offset, len) = params[0].1;
-    let normalized = "/files/media/images/logo.png";
-    assert_eq!(&normalized[offset..offset + len], "media/images/logo.png");
+    assert_eq!(
+        params.get("*").map(|s| s.as_str()),
+        Some("media/images/logo.png")
+    );
 }
 
 #[test]
