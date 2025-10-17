@@ -33,7 +33,7 @@ pub fn match_segment(
 
                 i += lit.len();
             }
-            SegmentPart::Param { name } => {
+            SegmentPart::Param { name, constraint } => {
                 let mut next_lit: Option<&str> = None;
 
                 if idx + 1 < pat.parts.len()
@@ -75,6 +75,30 @@ pub fn match_segment(
                 let capture = &seg[i..end];
                 if !default_pattern.is_match(capture) {
                     return None;
+                }
+
+                if let Some(constraint) = constraint {
+                    if let Some(regex) = constraint.compiled() {
+                        if !regex.is_match(capture) {
+                            return None;
+                        }
+                    } else {
+                        debug_assert!(
+                            false,
+                            "parameter constraint missing compiled regex; falling back to runtime compile",
+                        );
+                        let pattern = format!("^(?:{})$", constraint.raw());
+                        match Regex::new(&pattern) {
+                            Ok(regex) => {
+                                if !regex.is_match(capture) {
+                                    return None;
+                                }
+                            }
+                            Err(_) => {
+                                return None;
+                            }
+                        }
+                    }
                 }
 
                 out.push((name.clone(), (i, end - i)));

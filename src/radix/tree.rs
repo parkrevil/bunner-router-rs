@@ -1,14 +1,16 @@
 use bumpalo::Bump;
 use hashbrown::HashMap as FastHashMap;
 use hashbrown::HashSet as FastHashSet;
+use regex::Regex;
 
 use super::{ArenaHandle, RadixError, RadixResult};
 use crate::enums::HttpMethod;
-use crate::pattern::SegmentPattern;
+use crate::pattern::{PatternError, SegmentPart, SegmentPattern};
 use crate::radix::insert::{first_non_slash_byte, infer_static_guess, preprocess_and_parse};
 use crate::router::{Preprocessor, RouterOptions};
 use crate::tools::Interner;
 use std::rc::Rc;
+use std::sync::Arc;
 
 pub const HTTP_METHOD_COUNT: usize = 7;
 
@@ -39,6 +41,7 @@ pub struct RadixTree {
     pub(crate) root_wildcard_present: [bool; HTTP_METHOD_COUNT],
     pub(crate) static_route_full_mapping: [FastHashMap<Box<str>, u16>; HTTP_METHOD_COUNT],
     pub(crate) method_length_buckets: [u64; HTTP_METHOD_COUNT],
+    pub(crate) constraint_regex_cache: FastHashMap<Box<str>, Arc<Regex>>,
     pub enable_root_level_pruning: bool,
     pub enable_static_route_full_mapping: bool,
     pub(crate) next_route_key: std::sync::atomic::AtomicU16,
@@ -64,9 +67,52 @@ impl RadixTree {
             root_wildcard_present: [false; HTTP_METHOD_COUNT],
             static_route_full_mapping: Default::default(),
             method_length_buckets: [0; HTTP_METHOD_COUNT],
+            constraint_regex_cache: FastHashMap::new(),
             enable_root_level_pruning,
             enable_static_route_full_mapping,
             next_route_key: std::sync::atomic::AtomicU16::new(0),
+        }
+    }
+
+    pub(crate) fn hydrate_constraints(
+        &mut self,
+        segments: &mut [SegmentPattern],
+    ) -> RadixResult<()> {
+        for pattern in segments.iter_mut() {
+            for part in pattern.parts.iter_mut() {
+                if let SegmentPart::Param {
+                    name,
+                    constraint: Some(constraint),
+                } = part
+                    && constraint.compiled().is_none()
+                {
+                    let compiled = self.compile_constraint(name.as_str(), constraint.raw())?;
+                    constraint.set_compiled(compiled);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn compile_constraint(&mut self, name: &str, raw: &str) -> RadixResult<Arc<Regex>> {
+        if let Some(existing) = self.constraint_regex_cache.get(raw) {
+            return Ok(existing.clone());
+        }
+
+        let pattern = format!("^(?:{})$", raw);
+        match Regex::new(&pattern) {
+            Ok(regex) => {
+                let arc = Arc::new(regex);
+                self.constraint_regex_cache
+                    .insert(raw.to_string().into_boxed_str(), arc.clone());
+                Ok(arc)
+            }
+            Err(err) => Err(PatternError::RegexConstraintInvalid {
+                pattern: format!(":{}({})", name, raw),
+                name: name.to_string(),
+                error: err.to_string(),
+            }
+            .into()),
         }
     }
 

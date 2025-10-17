@@ -40,6 +40,9 @@ impl RadixTree {
         }
         self.root_node.set_dirty(true);
 
+        let mut parsed_segments = parsed_segments;
+        self.hydrate_constraints(&mut parsed_segments)?;
+
         let mut current = &mut self.root_node;
         let arena = self.arena_handle.clone();
 
@@ -106,6 +109,9 @@ impl RadixTree {
             });
         }
         self.root_node.set_dirty(true);
+
+        let mut parsed_segments = parsed_segments;
+        self.hydrate_constraints(&mut parsed_segments)?;
 
         let mut current = &mut self.root_node;
         let arena = self.arena_handle.clone();
@@ -388,7 +394,7 @@ fn parse_segments(
     let mut seen_params = HashSet::new();
 
     for seg in segments {
-        let pat = parse_segment(seg)?;
+        let pat = parse_segment(seg, &config.parser)?;
 
         let mut min_len = 0u16;
         let mut last_lit_len = 0u16;
