@@ -426,10 +426,7 @@ fn validate_nodes(
     Ok(())
 }
 
-fn validate_constraints(
-    nodes: &[PatternNode],
-    pattern: &str,
-) -> PatternResult<()> {
+fn validate_constraints(nodes: &[PatternNode], pattern: &str) -> PatternResult<()> {
     for node in nodes {
         match node {
             PatternNode::Parameter(param) => {

@@ -394,7 +394,7 @@ fn parse_segments(
     let mut seen_params = HashSet::new();
 
     for seg in segments {
-    let pat = parse_segment(seg)?;
+        let pat = parse_segment(seg)?;
 
         let mut min_len = 0u16;
         let mut last_lit_len = 0u16;
