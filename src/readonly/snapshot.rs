@@ -9,7 +9,7 @@ use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use regex::Regex;
 use std::sync::Arc;
 
-use super::cache::{CacheStats, RouteCache, RouteCacheKey, DEFAULT_CACHE_CAPACITY};
+use super::cache::{CacheStats, DEFAULT_CACHE_CAPACITY, RouteCache, RouteCacheKey};
 use super::converter::{copy_static_maps, extract_root};
 use super::{ReadOnlyError, ReadOnlyResult};
 

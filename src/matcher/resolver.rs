@@ -59,7 +59,7 @@ fn find_from(
         {
             return Some(found);
         }
-    return handle_terminal(node, method, path, params);
+        return handle_terminal(node, method, path, params);
     }
 
     let (segment, next_index) = split_segment(path, current_index);
