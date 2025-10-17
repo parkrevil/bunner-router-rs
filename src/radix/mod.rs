@@ -11,7 +11,7 @@ mod static_map;
 pub mod traversal;
 mod tree;
 
-pub(crate) use alloc::{NodeBox, create_node_box_from_arena_pointer};
+pub(crate) use alloc::{ArenaHandle, NodeBox};
 pub use error::{RadixError, RadixResult};
 pub use node::RadixTreeNode;
 pub(crate) use tree::STATIC_MAP_THRESHOLD;

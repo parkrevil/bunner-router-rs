@@ -1,5 +1,5 @@
 use super::{
-    MAX_ROUTES, RadixTree, RadixTreeNode, create_node_box_from_arena_pointer, node::PatternMeta,
+    ArenaHandle, MAX_ROUTES, RadixTree, RadixTreeNode, node::PatternMeta,
 };
 use crate::enums::HttpMethod;
 use crate::path::PathError;
@@ -42,8 +42,8 @@ impl RadixTree {
         }
         self.root_node.set_dirty(true);
 
-        let mut current = &mut self.root_node;
-        let arena_ptr: *const bumpalo::Bump = &self.arena;
+    let mut current = &mut self.root_node;
+    let arena = self.arena_handle.clone();
 
         for (i, pat) in parsed_segments.iter().enumerate() {
             // Fast check without allocation: single literal '*' means wildcard
@@ -64,11 +64,11 @@ impl RadixTree {
             if pat.parts.len() == 1 {
                 if let SegmentPart::Literal(lit) = &pat.parts[0] {
                     current = current.descend_static_mut_with_alloc(lit.as_str(), || {
-                        create_node_box_from_arena_pointer(arena_ptr)
+                        arena.alloc_node()
                     });
                     sort_static_children(current, &self.interner);
                 } else {
-                    current = find_or_create_pattern_child(current, pat, arena_ptr)?;
+                    current = find_or_create_pattern_child(current, pat, &arena)?;
                 }
             } else if pattern_is_pure_static(pat, "") {
                 // Unlikely path; keep safety for helper parity
@@ -81,11 +81,11 @@ impl RadixTree {
                     })
                     .collect::<String>();
                 current = current.descend_static_mut_with_alloc(joined.as_str(), || {
-                    create_node_box_from_arena_pointer(arena_ptr)
+                    arena.alloc_node()
                 });
                 sort_static_children(current, &self.interner);
             } else {
-                current = find_or_create_pattern_child(current, pat, arena_ptr)?;
+                current = find_or_create_pattern_child(current, pat, &arena)?;
             }
 
             // method mask is delayed to finalize()
@@ -111,8 +111,8 @@ impl RadixTree {
         }
         self.root_node.set_dirty(true);
 
-        let mut current = &mut self.root_node;
-        let arena_ptr: *const bumpalo::Bump = &self.arena;
+    let mut current = &mut self.root_node;
+    let arena = self.arena_handle.clone();
 
         for (i, pat) in parsed_segments.iter().enumerate() {
             let is_wildcard =
@@ -130,11 +130,11 @@ impl RadixTree {
             if pat.parts.len() == 1 {
                 if let SegmentPart::Literal(lit) = &pat.parts[0] {
                     current = current.descend_static_mut_with_alloc(&lit.clone(), || {
-                        create_node_box_from_arena_pointer(arena_ptr)
+                        arena.alloc_node()
                     });
                     sort_static_children(current, &self.interner);
                 } else {
-                    current = find_or_create_pattern_child(current, pat, arena_ptr)?;
+                    current = find_or_create_pattern_child(current, pat, &arena)?;
                 }
             } else if pattern_is_pure_static(pat, "") {
                 let joined = pat
@@ -146,11 +146,11 @@ impl RadixTree {
                     })
                     .collect::<String>();
                 current = current.descend_static_mut_with_alloc(&joined, || {
-                    create_node_box_from_arena_pointer(arena_ptr)
+                    arena.alloc_node()
                 });
                 sort_static_children(current, &self.interner);
             } else {
-                current = find_or_create_pattern_child(current, pat, arena_ptr)?;
+                current = find_or_create_pattern_child(current, pat, &arena)?;
             }
             // Do not set method_mask here; delayed to finalize for bulk path
             current.set_dirty(true);
@@ -198,7 +198,7 @@ fn sort_static_children(node: &mut RadixTreeNode, interner: &Interner) {
 fn find_or_create_pattern_child<'a>(
     node: &'a mut RadixTreeNode,
     pat: &SegmentPattern,
-    arena_ptr: *const bumpalo::Bump,
+    arena: &ArenaHandle,
 ) -> RadixResult<&'a mut RadixTreeNode> {
     for exist in node.patterns.iter() {
         if !pattern_compatible_policy(exist, pat) {
@@ -220,8 +220,7 @@ fn find_or_create_pattern_child<'a>(
         .unwrap_or(node.patterns.len());
 
     node.patterns.insert(insert_pos, pat.clone());
-    node.pattern_nodes
-        .insert(insert_pos, create_node_box_from_arena_pointer(arena_ptr));
+    node.pattern_nodes.insert(insert_pos, arena.alloc_node());
 
     Ok(node.pattern_nodes.get_mut(insert_pos).unwrap().as_mut())
 }

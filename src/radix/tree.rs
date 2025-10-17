@@ -2,7 +2,8 @@ use bumpalo::Bump;
 use hashbrown::HashMap as FastHashMap;
 use hashbrown::HashSet as FastHashSet;
 
-use super::{RadixError, RadixResult};
+use super::{ArenaHandle, RadixError, RadixResult};
+use std::rc::Rc;
 use crate::enums::HttpMethod;
 use crate::pattern::SegmentPattern;
 use crate::radix::insert::{first_non_slash_byte, infer_static_guess, preprocess_and_parse};
@@ -26,12 +27,12 @@ type ParsedEntry = (
     Vec<String>,
 );
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct RadixTree {
     pub(crate) root_node: super::node::RadixTreeNode,
     pub(crate) options: RouterOptions,
     pub(crate) preprocessor: Preprocessor,
-    pub(crate) arena: Bump,
+    pub(crate) arena_handle: ArenaHandle,
     pub(crate) interner: Interner,
     pub(crate) method_first_byte_bitmaps: [[u64; 4]; HTTP_METHOD_COUNT],
     pub(crate) root_parameter_first_present: [bool; HTTP_METHOD_COUNT],
@@ -49,11 +50,14 @@ impl RadixTree {
         let enable_static_route_full_mapping =
             configuration.tuning.enable_static_route_full_mapping;
         let preprocessor = Preprocessor::new(configuration.clone());
+    let arena = Rc::new(Bump::with_capacity(128 * 1024));
+    let arena_handle = ArenaHandle::new(arena);
+
         Self {
             root_node: super::node::RadixTreeNode::default(),
             options: configuration,
             preprocessor,
-            arena: Bump::with_capacity(128 * 1024),
+            arena_handle,
             interner: Interner::new(),
             method_first_byte_bitmaps: [[0; 4]; HTTP_METHOD_COUNT],
             root_parameter_first_present: [false; HTTP_METHOD_COUNT],
@@ -188,7 +192,7 @@ impl RadixTree {
         });
         let n = pre.len();
         let base = {
-            use std::sync::atomic::Ordering;
+        use std::sync::atomic::Ordering;
             let cur = self.next_route_key.load(Ordering::Relaxed);
             if cur as usize + n >= MAX_ROUTES as usize {
                 return Err(RadixError::MaxRoutesExceeded {

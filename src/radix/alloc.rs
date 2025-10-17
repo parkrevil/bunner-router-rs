@@ -1,18 +1,30 @@
 use bumpalo::Bump;
 use core::ptr::NonNull;
+use std::rc::Rc;
 
 use super::RadixTreeNode;
+
+#[derive(Clone, Debug)]
+pub(crate) struct ArenaHandle(Rc<Bump>);
+
+impl ArenaHandle {
+    #[inline]
+    pub fn new(bump: Rc<Bump>) -> Self {
+        Self(bump)
+    }
+
+    #[inline]
+    pub fn alloc_node(&self) -> NodeBox {
+        let node_ref: &mut RadixTreeNode = self.0.alloc(RadixTreeNode::default());
+        NodeBox(NonNull::from(node_ref))
+    }
+}
 
 #[repr(transparent)]
 #[derive(Clone)]
 pub(crate) struct NodeBox(pub(crate) NonNull<RadixTreeNode>);
 
 impl NodeBox {
-    #[inline(always)]
-    pub fn from_arena(arena: &Bump) -> Self {
-        let node_ref: &mut RadixTreeNode = arena.alloc(RadixTreeNode::default());
-        Self(NonNull::from(node_ref))
-    }
     #[inline(always)]
     pub fn as_ref(&self) -> &RadixTreeNode {
         unsafe { self.0.as_ref() }
@@ -44,10 +56,4 @@ impl core::fmt::Debug for NodeBox {
             .field(&(self.0.as_ptr() as usize))
             .finish()
     }
-}
-
-#[inline(always)]
-pub(crate) fn create_node_box_from_arena_pointer(arena_ptr: *const Bump) -> NodeBox {
-    let arena_ref = unsafe { &*arena_ptr };
-    NodeBox::from_arena(arena_ref)
 }
